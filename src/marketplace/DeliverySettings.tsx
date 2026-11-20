@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { C, Field, inputStyle, Alert } from './ui';
 import { apiMyDelivery, apiSaveMyDelivery } from './marketApi';
 import { DELIVERY_LABEL } from './types';
+import { GoodsStaffPanel } from './GoodsStatus';
 import type { DeliveryMethod } from './types';
 
 import { COUNTRIES, countryName } from './countries';
@@ -93,6 +94,7 @@ export const DeliverySettings = () => {
       {msg && <Alert text={msg.t} kind={msg.k} />}
       <button type="button" disabled={busy} onClick={() => void save()} className="w-full rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>{busy ? 'Сохраняем…' : 'Сохранить'}</button>
       <p className="text-[10px]" style={{ color: C.t3 }}>Sky не проверяет, что магазин действительно находится по указанному адресу и что доставка будет выполнена в срок.</p>
+      <GoodsStaffPanel />
     </div>
   );
 };

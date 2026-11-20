@@ -35,6 +35,7 @@ import type {
 import { CATEGORY_LABEL, DELIVERY_LABEL } from './types';
 import { countryName } from './countries';
 import { OrdersList, OrderPage } from './OrderScreens';
+import { GoodsQueueEntry } from './GoodsStatus';
 import { ParcelLookup } from './ParcelTracking';
 import { BecomeSeller, SellerCabinet } from './SellerCabinet';
 import { OriginBlock } from './ProductCompliance';
@@ -580,6 +581,7 @@ const MyOrders = ({ meId }: { meId: string }) => {
   }
   return (
     <div className="h-full overflow-y-auto">
+      <GoodsQueueEntry />
       <OrdersList orders={ordersBuy} onOpen={setOpen} empty="Заказов пока нет" />
       <ParcelLookup />
     </div>

@@ -37,6 +37,7 @@ import type {
 } from './types';
 import { ORDER_LABEL } from './types';
 import { ParcelTracking } from './ParcelTracking';
+import { GoodsStatusCard } from './GoodsStatus';
 import { AddressMap } from '@/shared/AddressMap';
 
 /* ── Что кому можно нажать ────────────────────────────────────────
@@ -854,6 +855,10 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
             указывает номер, стороны видят состояние посылки. */}
         {order.marketType === 'standard'
           && ['seller_payment_confirmed', 'fulfillment', 'seller_shipped', 'in_transit', 'ready_for_pickup', 'buyer_received', 'completed'].includes(order.status) && (
+          <GoodsStatusCard orderId={order.id} reloadKey={order.status} />
+        )}
+        {iam === 'seller' && order.marketType === 'standard'
+          && ['seller_payment_confirmed', 'fulfillment', 'seller_shipped', 'in_transit', 'ready_for_pickup'].includes(order.status) && (
           <ParcelTracking key={`${order.id}-${order.status}`} orderId={order.id} />
         )}
 
