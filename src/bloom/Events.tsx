@@ -125,7 +125,7 @@ export const EventsView = ({ communityId }: { communityId?: string }) => {
         <div className="glass-pill flex min-w-0 gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {SCOPES.map((s) => <button key={s.k} type="button" onClick={() => setScope(s.k)} className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold" style={{ color: scope === s.k ? 'var(--t1)' : 'var(--t3)', background: scope === s.k ? 'var(--bg-l2)' : 'transparent' }}>{s.l}</button>)}
         </div>
-        <button type="button" onClick={() => setCreate(true)} className="glass-btn accent inline-flex shrink-0 items-center gap-1 text-xs"><Plus size={14} />Создать</button>
+        <button type="button" onClick={() => setCreate(true)} className="glass-btn accent shrink-0 gap-1 whitespace-nowrap text-xs" style={{ display: "inline-flex", flexDirection: "row", alignItems: "center" }}><Plus size={14} />Создать</button>
       </div>
       {list === null ? <div className="grid h-24 place-items-center"><Loader2 className="animate-spin" size={16} style={{ color: 'var(--t3)' }} /></div>
         : list.length === 0 ? <p className="py-10 text-center text-sm" style={{ color: 'var(--t3)' }}>Здесь пока нет мероприятий.</p>
