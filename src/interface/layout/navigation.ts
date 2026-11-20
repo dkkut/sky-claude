@@ -1,4 +1,4 @@
-import { BookImage, Flower2, MessageCircleMore, Sparkles, UserRound, Bell, Gamepad2, Library, Briefcase, Building2 } from 'lucide-react';
+import { BookImage, Flower2, MessageCircleMore, Sparkles, UserRound, Bell, Gamepad2, Library, Briefcase, Building2, BriefcaseBusiness } from 'lucide-react';
 import type { ModuleKey } from '@/data/state/modules';
 export interface NavItem { key: ModuleKey; label: string; icon: typeof MessageCircleMore; }
 export const navigation: NavItem[] = [
@@ -11,5 +11,6 @@ export const navigation: NavItem[] = [
   { key:'library',       label:'Библиотека',    icon:Library },
   { key:'studio',        label:'Studio',        icon:Briefcase },
   { key:'business',      label:'Бизнес',        icon:Building2 },
+  { key:'jobs',          label:'Работа',        icon:BriefcaseBusiness },
   { key:'profile',       label:'Профиль',       icon:UserRound },
 ];

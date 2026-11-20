@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-export type ModuleKey = 'stories'|'messages'|'bloom'|'extras'|'profile'|'notifications'|'gaming'|'video'|'library'|'studio'|'business';
+export type ModuleKey = 'stories'|'messages'|'bloom'|'extras'|'profile'|'notifications'|'gaming'|'video'|'library'|'studio'|'business'|'jobs';
 interface S {
   activeModule: ModuleKey; setActiveModule: (m: ModuleKey) => void;
   pendingExtrasTab: string | null; setPendingExtrasTab: (t: string | null) => void;

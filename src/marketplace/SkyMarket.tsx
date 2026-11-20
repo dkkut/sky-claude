@@ -13,7 +13,8 @@
  * живёт в кабинете.
  */
 import { OnsiteTab } from './onsite/Onsite';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { MarketAd } from '@/ads/AdBlocks';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, X, Heart, ArrowLeft, Store, Bell, SlidersHorizontal,
@@ -406,6 +407,7 @@ export const ProductPage = ({ productId, onBack, onOrdered }:
 
           {!product.own && <ReportButton targetType="product" targetId={product.id} />}
 
+          <MarketAd placement="market_product" />
           {reviews.length > 0 && (
             <div className="space-y-2">
               <p className="text-[12px] font-bold" style={{ color: C.t1 }}>Отзывы</p>
@@ -555,9 +557,11 @@ export const Catalog = ({ marketType = 'standard', onOpen }:
           <Empty title="Ничего не нашлось" hint="Попробуйте другой запрос" />
         )}
         <div className="grid grid-cols-2 gap-2">
-          {catalog.map((p) => (
-            <ProductCard key={p.id} product={p} onOpen={() => onOpen(p.id)}
-              onFavorite={() => toggleFavorite(p)} />
+          {catalog.map((p, i) => (
+            <Fragment key={p.id}>
+              <ProductCard product={p} onOpen={() => onOpen(p.id)} onFavorite={() => toggleFavorite(p)} />
+              {i === 3 && <MarketAd placement="market_feed" className="col-span-2" />}
+            </Fragment>
           ))}
         </div>
       </div>

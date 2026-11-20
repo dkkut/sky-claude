@@ -93,4 +93,13 @@ const lst = await A.adminListCampaigns(ADM.id, {});
 const row = lst.items.find((x) => x.id === c1.id);
 t('campaign list: status, period, placement, impressions, clicks, ctr, name, priority', row && row.status && row.startDate && row.endDate && row.placement === 'bloom_feed' && row.impressions >= 2 && typeof row.ctr === 'number' && row.name === 'Весенняя акция' && row.priority === 10 && row.adminCreated);
 t('list denied to user', (await A.adminListCampaigns(U1.id, {})).error === 'not_allowed');
+
+// Sky Market: новые места размещения
+const cm = await A.adminCreateCampaign(ADM.id, { ...base, name: 'Market каталог', placement: 'market_feed', format: 'text_image' });
+t('market_feed: кампания создаётся', !cm.error, JSON.stringify(cm));
+t('market_product: формат video запрещён', (await A.adminCreateCampaign(ADM.id, { ...base, placement: 'market_product', format: 'video' })).error === 'bad_format');
+const adM = await A.resolveAdForPlacement(U1.id, 'market_feed');
+t('market_feed: человек получает рекламу (кампанию или свою)', adM && (adM.house === true || adM.title === base.title));
+t('market_feed: Prime рекламы не видит', (await A.resolveAdForPlacement(PR.id, 'market_feed')) === null);
+t('неизвестное место отклоняется', (await A.resolveAdForPlacement(U1.id, 'market_nope')) === null);
 console.log(`adsplus: ${ok} ok, ${bad} failed`); process.exit(bad ? 1 : 0);

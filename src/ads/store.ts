@@ -7,7 +7,7 @@
    и зовёт adsApi.ts на каждое действие.
 =============================================================== */
 import { create } from 'zustand';
-import { Film, Tv, Flower2, Camera, Megaphone, Pin } from 'lucide-react';
+import { Film, Tv, Flower2, Camera, Megaphone, Pin, ShoppingBag } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
 import {
   apiAdsTicket, apiMyCampaigns, apiCreateCampaign, apiPauseCampaign, apiResumeCampaign,
@@ -21,7 +21,9 @@ export type AdPlacement =
   | 'bloom_feed'      // пост в Bloom-ленте
   | 'bloom_stories'   // в историях
   | 'channel_post'    // пост в канале
-  | 'channel_pin';    // закреплённый пост в канале
+  | 'channel_pin'     // закреплённый пост в канале
+  | 'market_feed'     // карточка среди товаров Sky Market
+  | 'market_product'; // баннер на странице товара Sky Market
 
 /** Статусы сервера (server/ads.mjs) — полный жизненный цикл кампании. */
 export type AdStatus =
@@ -82,6 +84,8 @@ export interface AdPricing {
  * не доверяет — при создании кампании он всегда считает сам по своей
  * копии этой же таблицы (PLACEMENTS в server/ads.mjs). */
 export const AD_PLACEMENTS: AdPricing[] = [
+  { placement: 'market_feed', label: 'Market  -  Каталог', description: 'Рекламная карточка среди товаров каталога Sky Market (с пометкой «Реклама»)', Icon: ShoppingBag, pricePerDay: 700, minDays: 1, maxImpressions: 10000, formats: ['text', 'text_image', 'image'] },
+  { placement: 'market_product', label: 'Market  -  Страница товара', description: 'Баннер на странице товара Sky Market (с пометкой «Реклама»)', Icon: ShoppingBag, pricePerDay: 500, minDays: 1, maxImpressions: 8000, formats: ['text_image', 'image'] },
   {
     placement:     'video_preroll',
     label:         'Видео  -  Преролл',

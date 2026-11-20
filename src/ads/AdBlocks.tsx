@@ -262,3 +262,25 @@ export const hasActiveAds = async (placement: AdPlacement): Promise<boolean> => 
   const ad = await apiServeAd(placement);
   return ad !== null;
 };
+
+/* -- Реклама в Sky Market: карточка среди товаров и баннер на странице товара ---------- */
+export const MarketAd = ({ placement, className = '' }: { placement: 'market_feed' | 'market_product'; className?: string }) => {
+  const { ad, click } = useServedAd(placement);
+  const [dismissed, setDismissed] = useState(false);
+  if (!ad || dismissed) return null;
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`relative overflow-hidden rounded-2xl ${className}`} style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+      <button type="button" onClick={click} className="flex w-full items-center gap-3 p-3 text-left">
+        {ad.mediaUrl && ad.format !== 'video' ? <img src={ad.mediaUrl} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+          : <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl" style={{ background: 'var(--accent-bg)' }}><Megaphone size={22} style={{ color: 'var(--accent)' }} /></div>}
+        <div className="min-w-0 flex-1">
+          <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold" style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>{ad.label || 'Реклама'}</span>
+          <p className="mt-0.5 truncate text-sm font-bold" style={{ color: 'var(--t1)' }} translate="no">{ad.title}</p>
+          {ad.description && <p className="line-clamp-2 text-[11px]" style={{ color: 'var(--t2)' }} translate="no">{ad.description}</p>}
+        </div>
+        {ad.linkUrl && <ExternalLink size={13} style={{ color: 'var(--t3)', flexShrink: 0 }} />}
+      </button>
+      <button type="button" aria-label="Скрыть рекламу" onClick={() => setDismissed(true)} className="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full" style={{ color: 'var(--t3)' }}><X size={10} /></button>
+    </motion.div>
+  );
+};

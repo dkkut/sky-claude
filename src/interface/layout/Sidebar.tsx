@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, MessageSquare, Bell, Layers, Swords, Radio, User, PlaySquare,
-  Library, Briefcase, Building2, Crown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+  Library, Briefcase, Building2, BriefcaseBusiness, Crown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import { useModuleStore }  from '@/data/state/modules';
 import { useAuthStore }    from '@/core/auth/store';
 import { useNavPrefs, useNavBadges, fmtBadge } from './navPrefs';
@@ -28,6 +28,7 @@ const NAV: { key: ModuleKey; label: string; Icon: typeof MessageSquare }[] = [
   { key: 'library',       label: 'Библиотека',  Icon: Library       },
   { key: 'studio',        label: 'Studio',      Icon: Briefcase     },
   { key: 'business',      label: 'Бизнес',      Icon: Building2     },
+  { key: 'jobs',          label: 'Работа',      Icon: BriefcaseBusiness },
   { key: 'profile',       label: 'Профиль',     Icon: User          },
 ];
 

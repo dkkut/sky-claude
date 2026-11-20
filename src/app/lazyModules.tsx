@@ -15,6 +15,7 @@ import { lazyChunk } from './lazyChunk';
 export const ExtrasModule   = lazyChunk(() => import('@/extras/ExtrasModule').then(m => ({ default: m.ExtrasModule })));
 export const LibraryModule  = lazyChunk(() => import('@/library/LibraryModule').then(m => ({ default: m.LibraryModule })));
 export const BusinessStudio = lazyChunk(() => import('@/library/BusinessStudio').then(m => ({ default: m.BusinessStudio })));
+export const JobsModule = lazyChunk(() => import('@/jobs/JobsModule').then(m => ({ default: m.JobsModule })));
 export const BusinessModule = lazyChunk(() => import('@/business/BusinessModule').then(m => ({ default: m.BusinessModule })));
 export const BloomModule    = lazyChunk(() => import('@/bloom/BloomModule').then(m => ({ default: m.BloomModule })));
 export const ProfileModule  = lazyChunk(() => import('@/profile/ProfileModule').then(m => ({ default: m.ProfileModule })));

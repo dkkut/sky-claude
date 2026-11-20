@@ -14,7 +14,7 @@ import { hasPrime as hasPrimeOf } from './skyid.mjs';
 
 export const MODULES = { messages: 'Чаты', extras: 'Sky Media', studio: 'Студия', business: 'Бизнес', bloom: 'Bloom', gaming: 'Игры', video: 'Видео' };
 export const EXTRAS_TABS = ['prime', 'music', 'tv', 'film', 'podcasts', 'books', 'ai', 'market', 'go'];
-export const HOUSE_PLACEMENTS = ['video_preroll', 'film_preroll', 'video_banner', 'bloom_feed', 'channel_post'];
+export const HOUSE_PLACEMENTS = ['video_preroll', 'film_preroll', 'video_banner', 'bloom_feed', 'channel_post', 'market_feed', 'market_product'];
 
 export const signLink = (campaignId, url) => macOf('adlink', `${campaignId}|${url}`).slice(0, 40);
 export const linkOk = (campaignId, url, sig) => Boolean(url && sig && signLink(campaignId, url) === sig);

@@ -21,7 +21,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places' | 'sandbox' | 'sandbox_publish' | 'server_ops' | 'launcher' | 'launcher_moderation' | 'email_comms' | 'tax' | 'maps' | 'media_restrict' | 'royalty_view' | 'royalty_review' | 'royalty_finance' | 'specialists' | 'game_infra' | 'account_freeze' | 'ads_manage' | 'business_rules' | 'channel_mod' | 'life_admin' | 'life_moderation' | 'bloom_communities';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places' | 'sandbox' | 'sandbox_publish' | 'server_ops' | 'launcher' | 'launcher_moderation' | 'email_comms' | 'tax' | 'maps' | 'media_restrict' | 'royalty_view' | 'royalty_review' | 'royalty_finance' | 'specialists' | 'game_infra' | 'account_freeze' | 'ads_manage' | 'business_rules' | 'channel_mod' | 'life_admin' | 'life_moderation' | 'jobs' | 'jobs_tariffs' | 'bloom_communities';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -82,6 +82,8 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   bloom_communities: 'Bloom: жалобы на сообщества и их блокировка',
   life_admin: 'Sky Life: настройки, лимиты, категории, статистика',
   life_moderation: 'Sky Life: модерация деловых публикаций и жалоб',
+  jobs: 'Sky Работа: модерация вакансий, проверка работодателей, жалобы',
+  jobs_tariffs: 'Sky Работа: тарифы и продвижение',
   game_infra: 'Sky Games: игровые серверы (критично)',
   account_freeze: 'Заморозка и восстановление аккаунтов и каналов',
   upload_limits: 'Лимиты загрузки (личные и публичные)',

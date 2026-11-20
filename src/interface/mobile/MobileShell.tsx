@@ -16,7 +16,7 @@ import { ErrorBoundary } from '@/app/ErrorBoundary';
 
 import { NotificationsScreen } from '@/notifications/NotificationsScreen';
 import {
-  StoriesModule, ExtrasModule, LibraryModule, BusinessStudio, BusinessModule, BloomModule,
+  StoriesModule, ExtrasModule, LibraryModule, BusinessStudio, BusinessModule, JobsModule, BloomModule,
   ProfileModule, GamingModule, SkyVideo, ModuleFallback,
 } from '@/app/lazyModules';
 
@@ -93,6 +93,7 @@ export const MobileShell = () => {
                 {activeModule === 'library'       && <LibraryModule />}
                 {activeModule === 'studio'        && <BusinessStudio />}
                 {activeModule === 'business'      && <BusinessModule />}
+                {activeModule === 'jobs'          && <JobsModule />}
                 {activeModule === 'profile'       && <ProfileModule />}
                 {activeModule === 'video'         && <SkyVideo />}
                 </ModuleGate>

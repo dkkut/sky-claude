@@ -5,8 +5,8 @@ import { flash } from '@/shared/flash';
 import { apiUploadAdMediaEx } from '@/ads/adsApi';
 import { Box, Btn, Note, K, fieldSty, inp, call, useLoad, type D } from './kit';
 
-const PL: Record<string, string> = { video_preroll: 'Перед видео', film_preroll: 'Перед кино', video_banner: 'Баннер у видео', bloom_feed: 'Лента Bloom', bloom_stories: 'Истории', channel_post: 'Пост в канале', channel_pin: 'Закреп в канале' };
-const FMT: Record<string, string[]> = { video_preroll: ['video', 'image'], film_preroll: ['video', 'image'], video_banner: ['image', 'text_image'], bloom_feed: ['text', 'text_image', 'image'], bloom_stories: ['image', 'video'], channel_post: ['text', 'text_image'], channel_pin: ['text', 'text_image', 'image'] };
+const PL: Record<string, string> = { video_preroll: 'Перед видео', film_preroll: 'Перед кино', video_banner: 'Баннер у видео', bloom_feed: 'Лента Bloom', bloom_stories: 'Истории', channel_post: 'Пост в канале', channel_pin: 'Закреп в канале', market_feed: 'Market: каталог', market_product: 'Market: страница товара' };
+const FMT: Record<string, string[]> = { video_preroll: ['video', 'image'], film_preroll: ['video', 'image'], video_banner: ['image', 'text_image'], bloom_feed: ['text', 'text_image', 'image'], bloom_stories: ['image', 'video'], channel_post: ['text', 'text_image'], channel_pin: ['text', 'text_image', 'image'], market_feed: ['text', 'text_image', 'image'], market_product: ['text_image', 'image'] };
 const FL: Record<string, string> = { video: 'Видео', image: 'Изображение', text: 'Текст', text_image: 'Текст и картинка' };
 const ST: Record<string, string> = { active: 'Идёт', scheduled: 'Запланирована', paused: 'Остановлена', completed: 'Завершена', cancelled: 'Отменена', moderation: 'На модерации', approved: 'Одобрена', rejected: 'Отклонена', draft: 'Черновик' };
 const SVC: Record<string, string> = { messages: 'Чаты', extras: 'Sky Media', studio: 'Студия', business: 'Бизнес', bloom: 'Bloom', gaming: 'Игры', video: 'Видео' };

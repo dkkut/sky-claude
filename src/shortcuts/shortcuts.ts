@@ -16,7 +16,7 @@ const MAX = 40;
 export const MODULE_ACTIONS: { id: ModuleKey; label: string }[] = [
   { id: 'messages', label: 'Чаты' }, { id: 'bloom', label: 'Bloom' }, { id: 'stories', label: 'Истории' }, { id: 'extras', label: 'Sky Media' },
   { id: 'gaming', label: 'Игры' }, { id: 'video', label: 'Sky Video' }, { id: 'library', label: 'Библиотека' }, { id: 'studio', label: 'Студия' },
-  { id: 'business', label: 'Бизнес' }, { id: 'notifications', label: 'Уведомления' }, { id: 'profile', label: 'Профиль' },
+  { id: 'business', label: 'Бизнес' }, { id: 'jobs', label: 'Работа' }, { id: 'notifications', label: 'Уведомления' }, { id: 'profile', label: 'Профиль' },
 ];
 export const EXTRAS_ACTIONS: { id: string; label: string }[] = [
   { id: 'home', label: 'Главная' }, { id: 'music', label: 'Музыка' }, { id: 'movies', label: 'Кино' }, { id: 'tv', label: 'ТВ' },

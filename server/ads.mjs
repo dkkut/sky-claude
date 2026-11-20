@@ -41,6 +41,8 @@ export const PLACEMENTS = {
   bloom_stories:  { pricePerDay: 1200, minDays: 1, maxImpressions: 7000,  formats: ['image', 'video'] },
   channel_post:   { pricePerDay: 400,  minDays: 1, maxImpressions: 3000,  formats: ['text', 'text_image'] },
   channel_pin:    { pricePerDay: 2500, minDays: 1, maxImpressions: 4000,  formats: ['text', 'text_image', 'image'] },
+  market_feed:    { pricePerDay: 700,  minDays: 1, maxImpressions: 10000, formats: ['text', 'text_image', 'image'] },   // карточка среди товаров каталога Sky Market
+  market_product: { pricePerDay: 500,  minDays: 1, maxImpressions: 8000,  formats: ['text_image', 'image'] },           // баннер на странице товара
 };
 export const PLACEMENT_KEYS = Object.keys(PLACEMENTS);
 const MAX_DAYS = 30;
