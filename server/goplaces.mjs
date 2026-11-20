@@ -17,6 +17,7 @@ import { logAdmin as adminLog } from './adminsec.mjs';
 import { subState, imageFromDataUrl } from './kbiz.mjs';
 import { depositPaymentChanged } from './goplacebook.mjs';
 import { workPaymentChanged } from './gotransport.mjs';
+import { ticketPaymentChanged } from './gotransit.mjs';
 import { createOrderCore, returnStock, notifyBuyerOrder, ORDER_LABEL } from './kbcatalog.mjs';
 
 const err = (error, extra = {}) => ({ error, ...extra });
@@ -330,6 +331,7 @@ export const paymentChanged = (paymentId, to) => {
     try {
       if (await depositPaymentChanged(paymentId, to)) return;
       if (await workPaymentChanged(paymentId, to)) return;
+      if (await ticketPaymentChanged(paymentId, to)) return;
       const { rows } = await query(`SELECT p.status, o.id, o.number, o.buyer_profile_id FROM kb_payments p JOIN kb_orders o ON o.qr_id = p.qr_id WHERE p.id = $1 AND o.buyer_profile_id IS NOT NULL`, [paymentId]);
       const r = rows[0]; if (!r || r.status !== to) return;
       const text = { confirmed: ['Оплата подтверждена', 'Организация подтвердила оплату.'], refunded: ['Оплата возвращена', 'Организация вернула оплату.'], cancelled: ['Платёж отменён', 'Платёж по заказу отменён организацией.'] }[to];

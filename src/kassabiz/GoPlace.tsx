@@ -9,6 +9,7 @@ import { SkyMap } from '@/marketplace/logistics/SkyMap';
 import { Btn, In, card, field } from './ui';
 import { Bookings, Schedule, OwnerReviews, PlaceStats } from './GoPlaceOps';
 import { GoTransport } from './GoTransport';
+import { GoTransit } from './GoTransit';
 
 const DAYS: [string, string][] = [['mon', 'Пн'], ['tue', 'Вт'], ['wed', 'Ср'], ['thu', 'Чт'], ['fri', 'Пт'], ['sat', 'Сб'], ['sun', 'Вс']];
 const TONE: Record<string, string> = { draft: 'var(--t3)', pending: 'var(--amber, #f59e0b)', published: 'var(--green, #22c55e)', rejected: 'var(--red)', hidden: 'var(--t3)', blocked: 'var(--red)' };
@@ -125,16 +126,16 @@ const GoPlaceCard = ({ canConnect }: { canConnect: boolean }) => {
   );
 };
 
-const TABS = [['card', 'Карточка'], ['book', 'Записи'], ['sched', 'Расписание'], ['rev', 'Отзывы'], ['stat', 'Статистика'], ['tr', 'Транспорт']] as const;
+const TABS = [['card', 'Карточка'], ['book', 'Записи'], ['sched', 'Расписание'], ['rev', 'Отзывы'], ['stat', 'Статистика'], ['tr', 'Транспорт'], ['transit', 'Проезд']] as const;
 export const GoPlace = ({ role = 'owner' }: { role?: string }) => {
-  const tabs = TABS.filter(([k]) => role === 'owner' || role === 'admin' || k === 'book' || k === 'rev' || k === 'stat' || k === 'tr');   // менеджер: записи, отзывы, статистика
+  const tabs = TABS.filter(([k]) => role === 'owner' || role === 'admin' || k === 'book' || k === 'rev' || k === 'stat' || k === 'tr' || k === 'transit');   // менеджер: записи, отзывы, статистика
   const [tab, setTab] = useState<(typeof TABS)[number][0]>(tabs[0][0]);
   return (
     <div className="space-y-3">
       <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {tabs.map(([k, n]) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)} className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold" style={tab === k ? { background: 'var(--accent)', color: '#fff' } : { background: 'var(--bg-l2)', color: 'var(--t2)' }}>{n}</button>)}
       </div>
-      {tab === 'card' && <GoPlaceCard canConnect={role === 'owner'} />}{tab === 'book' && <Bookings />}{tab === 'sched' && <Schedule />}{tab === 'rev' && <OwnerReviews />}{tab === 'stat' && <PlaceStats />}{tab === 'tr' && <GoTransport />}
+      {tab === 'card' && <GoPlaceCard canConnect={role === 'owner'} />}{tab === 'book' && <Bookings />}{tab === 'sched' && <Schedule />}{tab === 'rev' && <OwnerReviews />}{tab === 'stat' && <PlaceStats />}{tab === 'tr' && <GoTransport />}{tab === 'transit' && <GoTransit />}
     </div>
   );
 };

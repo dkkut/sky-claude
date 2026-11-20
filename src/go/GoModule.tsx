@@ -1,7 +1,7 @@
 /** Sky GO: оболочка раздела. Нижняя навигация: Главная / Заказы / Работа / Профиль. */
 import { NotifyPrefs, MySupport, SupportForm } from './Support';
 import { useEffect, useRef, useState } from 'react';
-import { Car, UtensilsCrossed, Package, Plane, Fuel, ParkingCircle, Building2, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
+import { Bus, Car, UtensilsCrossed, Package, Plane, Fuel, ParkingCircle, Building2, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
 import { goApi, ROLE_LABEL, STAY_LABEL, type GoRole, type StayKind } from './api';
 import { Back, Btn, Card, Chip, Col, CitySelect, Empty, ErrorState, Notice, fail, useCity, useLoad, C, GO, fmt } from './ui';
 import { flash } from '@/shared/flash';
@@ -16,6 +16,7 @@ import { TravelScreen, type TravelTab } from './Travel';
 import { StayCabinet } from './StayCabinet';
 import { ParkingScreen } from './Parking';
 import { PlacesScreen } from './Places';
+import { TransitScreen } from './Transit';
 import { takeGoLink, clearGoLink } from './deeplink';
 import { ParkingOwnerScreen } from './ParkingOwner';
 import { DriverCabinet, SellerCabinet, CompanyCabinet, PayDetailsCard } from './Cabinet';
@@ -25,7 +26,7 @@ import { ExecutorWorkspace } from './Work';
 import { DeliveryForm as OrgDeliveryForm, type OrgFormCtx } from './Delivery';
 
 type Tab = 'home' | 'orders' | 'work' | 'profile';
-type Screen = null | { biz: string; name: string; role: OrgRole; order?: string } | { bizNew: OrgFormCtx & { role: OrgRole } } | { work: 'courier' | 'taxi_driver' } | 'taxi' | 'food' | 'delivery' | { delivery: DeliveryMode } | { auto: AutoKind | null } | 'flights' | 'fuel' | 'parking' | 'places' | 'parkingOwner' | { order: string } | { travel: TravelTab } | { role: GoRole; mode: 'register' | 'cabinet' };
+type Screen = null | { biz: string; name: string; role: OrgRole; order?: string } | { bizNew: OrgFormCtx & { role: OrgRole } } | { work: 'courier' | 'taxi_driver' } | 'taxi' | 'food' | 'delivery' | { delivery: DeliveryMode } | { auto: AutoKind | null } | 'flights' | 'fuel' | 'parking' | 'places' | 'transit' | 'parkingOwner' | { order: string } | { travel: TravelTab } | { role: GoRole; mode: 'register' | 'cabinet' };
 
 const SERVICES = [
   { key: 'taxi', title: 'Такси', hint: 'Поездка по городу', Icon: Car },
@@ -34,6 +35,7 @@ const SERVICES = [
   { key: 'flights', title: 'Авиабилеты', hint: 'Поиск предложений', Icon: Plane },
   { key: 'fuel', title: 'Моё авто', hint: 'Заправки и мойки рядом', Icon: Fuel },
   { key: 'parking', title: 'Парковки', hint: 'Оплата по реквизитам организации', Icon: ParkingCircle },
+  { key: 'transit', title: 'Билеты на проезд', hint: 'Купить и показать QR', Icon: Bus },
   { key: 'places', title: 'Организации', hint: 'Находите места рядом с собой', Icon: Building2 },
 ] as const;
 
@@ -95,6 +97,7 @@ export const SkyGo = ({ businessMode = false }: { businessMode?: boolean } = {})
     if (screen && typeof screen === 'object' && 'delivery' in screen) return <DeliveryForm mode={screen.delivery} city={city} cargo={config.cargo} onBack={() => setScreen('delivery')} onCreated={open} />;
     if (screen === 'flights') return <TravelScreen initial="flights" cities={config.cities} city={city} onCity={setCity} onBack={() => setScreen(null)} onBooked={open} onOrders={() => goTab('orders')} />;
     if (screen === 'parkingOwner') return <ParkingOwnerScreen onBack={() => setScreen(null)} />;
+    if (screen === 'transit') return <TransitScreen city={city} onBack={() => setScreen(null)} />;
     if (screen === 'places') return <PlacesScreen city={city} onBack={() => setScreen(null)} group={link?.group} initialOpen={link?.open ?? null} onOpenApp={(k) => setScreen(k === 'fuel' ? 'fuel' : 'parking')} />;
     if (screen === 'parking') return <ParkingScreen city={city} onBack={() => setScreen(null)} />;
     if (screen === 'fuel') return <AutoScreen city={city} onBack={() => setScreen(null)} onOpen={(k) => setScreen({ auto: k })} />;
