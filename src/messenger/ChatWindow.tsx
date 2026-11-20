@@ -986,6 +986,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const startCall = useCallStore(s => s.startCall);
 
   const [draft, setDraft]           = useState('');
+  const [starKey, setStarKey]         = useState(0);
   const draftRef                    = useRef('');
   const [showHash, setShowHash]     = useState(false);
   const [hashQ, setHashQ]           = useState('');
@@ -1314,6 +1315,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       }
     }
     setDraft(''); draftRef.current = ''; setReplyTo(null);
+    setStarKey((k) => k + 1);
     setChatDraft(activeChatId, '');
     setMsgOptions({ once: false, spoiler: false, silent: false, selfDestruct: 0, scheduled: false, scheduledAt: '' });
     requestAnimationFrame(() => taRef.current?.focus());
@@ -1543,6 +1545,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) sendFile(f); }}>
+      {starKey > 0 && <div key={starKey} className="sky-fallstar" aria-hidden="true"><i className="sky-fallstar-core" /><i className="sky-fallstar-trail" /><b className="sky-fallstar-burst" /></div>}
 
       <ChatWallpaper chatId={activeChatId ?? undefined} light={theme.light} />
 
@@ -2130,6 +2133,17 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
 
         {/* Typing */}
         <AnimatePresence>
+          {hasVisibleText(draft) && !editMsg && (
+            <motion.div key="me-typing" initial={{ opacity: 0, y: 6, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+              className="mt-1 flex justify-end" aria-hidden="true">
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-br-md px-4 py-2.5" style={{ background: theme.accent }}>
+                {[0, 1, 2].map(i => (
+                  <motion.div key={i} className="h-1.5 w-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.9)' }}
+                    animate={{ y: [0, -5, 0] }} transition={{ duration: 0.7, delay: i * 0.15, repeat: Infinity }} />
+                ))}
+              </div>
+            </motion.div>
+          )}
           {typing.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="flex mt-1">

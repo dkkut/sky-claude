@@ -585,3 +585,18 @@ html[data-animations='off'] .spp-blob, html[data-animations='off'] .spp-spin, ht
 @keyframes lk-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes lk-rise { from { opacity: 0; transform: translateY(14px) scale(.98) } to { opacity: 1; transform: none } }
 @media (prefers-reduced-motion: reduce) { [data-keep-dark] [style*="lk-"] { animation: none !important; } }
+
+/* Падающая звёздочка при отправке сообщения: летит сверху справа к своему пузырю, оставляет хвост и рассыпается искрами. */
+.sky-fallstar { position: absolute; inset: 0; z-index: 40; pointer-events: none; overflow: hidden; }
+.sky-fallstar-core, .sky-fallstar-trail { position: absolute; display: block; animation: sky-star-fall .85s cubic-bezier(.45,.05,.7,1) forwards; opacity: 0; }
+.sky-fallstar-core { width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 4px #fff, 0 0 24px 10px var(--accent, #a78bfa); }
+.sky-fallstar-core::before, .sky-fallstar-core::after { content: ''; position: absolute; left: 50%; top: 50%; background: #fff; border-radius: 2px; transform: translate(-50%, -50%); }
+.sky-fallstar-core::before { width: 26px; height: 2px; } .sky-fallstar-core::after { width: 2px; height: 26px; }
+.sky-fallstar-trail { width: 3px; height: 110px; margin: -116px 0 0 -1.5px; background: linear-gradient(to top, rgba(255,255,255,.95), rgba(167,139,250,.5) 50%, transparent); border-radius: 3px; transform: rotate(8deg); transform-origin: bottom center; }
+.sky-fallstar-burst { position: absolute; right: 10%; bottom: 14%; width: 6px; height: 6px; margin: 0 -3px -3px 0; border-radius: 50%; opacity: 0; background: #fff;
+  box-shadow: 0 -18px 0 -1px #fff, 16px -9px 0 -1px #fde68a, 18px 9px 0 -1px #fff, 0 18px 0 -1px #c4b5fd, -18px 9px 0 -1px #fff, -16px -9px 0 -1px #fde68a;
+  animation: sky-star-burst .55s ease-out .78s forwards; }
+@keyframes sky-star-fall { 0% { right: 18%; top: -8%; opacity: 0; } 12% { opacity: 1; } 100% { right: 10%; top: 86%; opacity: 1; } }
+@keyframes sky-star-burst { 0% { transform: scale(.2); opacity: 1; } 100% { transform: scale(2.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sky-fallstar { display: none; } }
+html[data-animations='off'] .sky-fallstar { display: none; }
