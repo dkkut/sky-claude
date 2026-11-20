@@ -149,6 +149,7 @@ const mayVisit = async (me, owner) => {
 export const city = async (me, q = '', offset = 0) => {
   await ensurePlayer(me); const like = `%${String(q).trim().replace(/[%_\\]/g, '\\$&').slice(0, 40)}%`;
   const { rows } = await query(`SELECT pl.profile_id, pr.name, pr.username, pl.visit_policy,
+      EXISTS (SELECT 1 FROM friendships f WHERE f.status='accepted' AND f.a_id = LEAST($1::text, pl.profile_id) AND f.b_id = GREATEST($1::text, pl.profile_id)) AS friend,
       (SELECT count(*)::int FROM sp_owners o JOIN sp_pets p ON p.id=o.pet_id AND p.deleted_at IS NULL WHERE o.profile_id = pl.profile_id) AS pets,
       (SELECT p.species_id FROM sp_owners o JOIN sp_pets p ON p.id=o.pet_id AND p.deleted_at IS NULL WHERE o.profile_id = pl.profile_id ORDER BY p.level DESC LIMIT 1) AS top_species
     FROM sp_players pl JOIN profiles pr ON pr.id = pl.profile_id AND pr.deleted_at IS NULL
@@ -157,7 +158,7 @@ export const city = async (me, q = '', offset = 0) => {
       AND EXISTS (SELECT 1 FROM sp_owners o JOIN sp_pets p ON p.id=o.pet_id AND p.deleted_at IS NULL WHERE o.profile_id = pl.profile_id)
     ORDER BY pets DESC, pr.name LIMIT 30 OFFSET $3`, [me, like === '%%' ? '%%' : like, Math.max(0, Number(offset) || 0)]);
   const sp = await query('SELECT id,name,art,image_id,rarity FROM sp_species WHERE id = ANY($1::text[])', [rows.map((r) => r.top_species).filter(Boolean)]); const sm = Object.fromEntries(sp.rows.map((s) => [s.id, s]));
-  return { players: rows.map((r) => ({ id: r.profile_id, name: r.name, username: r.username, pets: r.pets, top: sm[r.top_species] ?? null })) };
+  return { players: rows.map((r) => ({ id: r.profile_id, name: r.name, username: r.username, friend: r.friend, pets: r.pets, top: sm[r.top_species] ?? null })) };
 };
 export const visit = async (me, owner) => {
   if (!(await mayVisit(me, owner))) return err('private'); await ensurePlayer(me);

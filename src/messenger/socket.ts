@@ -499,6 +499,9 @@ const handle = (data: any) => {
     case 'gs:message-deleted':
       useGameServers.getState().applyMessageDeleted(payload?.channelId, payload?.id);
       break;
+    case 'pets:changed':
+      window.dispatchEvent(new CustomEvent('sky:skypets', { detail: payload }));
+      break;
     case 'gs:changed':
       useGameServers.getState().applyChanged(payload?.serverId);
       break;

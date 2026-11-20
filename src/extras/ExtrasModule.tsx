@@ -1,5 +1,5 @@
 import { SkyCloud as SkyMascot } from '@/os/SkyCloud';
-import { HelpCircle, Hourglass, Compass, ArrowLeftRight, Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
+import { PawPrint, HelpCircle, Hourglass, Compass, ArrowLeftRight, Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
 import { visitKeyOf, apiCashbackVisit } from '@/prime/primeApi';
 import { flash } from '@/shared/flash';
 import { ModuleGate, MediaOutageBanner } from '@/core/moduleClosures';
@@ -42,6 +42,7 @@ const Launcher = lazyChunk(() => import('@/launcher/Launcher').then(m => ({ defa
 const SkyCloud = lazyChunk(() => import('@/cloud/SkyCloud').then(m => ({ default: m.SkyCloud })));
 const SkyTransfer = lazyChunk(() => import('@/transfer/SkyTransfer').then(m => ({ default: m.SkyTransfer })));
 const GuidePage = lazyChunk(() => import('@/guide/GuidePage').then(m => ({ default: m.GuidePage })));
+const SkyPets = lazyChunk(() => import('@/skypets/SkyPets').then(m => ({ default: m.default })));
 const SkyQA = lazyChunk(() => import('@/qa/SkyQA').then(m => ({ default: m.SkyQA })));
 const SkyTime = lazyChunk(() => import('@/time/SkyTime').then(m => ({ default: m.SkyTime })));
 const FriendsMap = lazyChunk(() => import('@/maps/FriendsMap').then(m => ({ default: m.FriendsMap })));
@@ -102,7 +103,7 @@ import { MediaHome } from '@/mediahome/MediaHome';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'partners'|'friendsmap'|'skytime'|'qa'|'guide'|'transfer'|'more';
+type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'partners'|'friendsmap'|'skytime'|'qa'|'skypets'|'guide'|'transfer'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -629,6 +630,7 @@ const TABS = [
   {key:'friendsmap', label:'Карта друзей', icon:MapPin},
   {key:'skytime', label:'Sky Time', icon:Hourglass},
   {key:'qa', label:'Вопросы', icon:HelpCircle},
+  {key:'skypets', label:'Питомцы', icon:PawPrint},
   {key:'guide',    label:'Путеводитель', icon:Compass},
   {key:'transfer', label:'Sky Transfer', icon:ArrowLeftRight},
   {key:'more',   label:'Прочее', icon:MoreHorizontal},
@@ -942,6 +944,7 @@ const MediaHomeTab = ({
     { key:'friendsmap',Icon:MapPin,label:'Карта друзей', color:'#ef4444', bg:'rgba(239,68,68,.12)'  },
     { key:'skytime',Icon:Hourglass,label:'Sky Time', color:'#f59e0b', bg:'rgba(245,158,11,.12)'  },
     { key:'qa',Icon:HelpCircle,label:'Вопросы', color:'#a855f7', bg:'rgba(168,85,247,.12)'  },
+    { key:'skypets',Icon:PawPrint,label:'Питомцы', color:'#ec4899', bg:'rgba(236,72,153,.12)'  },
     { key:'guide',Icon:Compass,label:'Путеводитель', color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
     { key:'transfer',Icon:ArrowLeftRight,label:'Sky Transfer', color:'#38bdf8', bg:'rgba(56,189,248,.12)'  },
   ] as const;
@@ -1368,6 +1371,7 @@ export const ExtrasModule = () => {
         {tab==='friendsmap' && <FriendsMap/>}
         {tab==='skytime' && <SkyTime/>}
         {tab==='qa' && <SkyQA/>}
+        {tab==='skypets' && <ModuleGate id="skypets"><SkyPets/></ModuleGate>}
         {tab==='guide' && <GuidePage/>}
         {tab==='transfer' && <SkyTransfer/>}
         {tab==='market' && <SkyMarket/>}

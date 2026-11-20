@@ -302,6 +302,15 @@ server {
         proxy_send_timeout 120s;
         proxy_pass http://sky_api;
     }
+    # Sky Pets: картинки питомцев/скинов/предметов от создателей — до 2 МБ (routes/skypets.mjs). Точное совпадение: общий потолок 1m обрезал бы файл.
+    location = /api/admin/skypets/images {
+        limit_req zone=req_general burst=20 nodelay;
+        client_max_body_size 3m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_pass http://sky_api;
+    }
     location ^~ /api/custom-gifts/ {
         limit_req zone=req_general burst=90 nodelay;
         client_max_body_size 13m;

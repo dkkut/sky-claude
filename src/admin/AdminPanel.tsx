@@ -81,6 +81,7 @@ import { BloomCommTab } from './BloomCommTab';
 import { JobsAdminTab } from './JobsAdminTab';
 import { ContentFilterTab } from './ContentFilterTab';
 import { SpecialistsTab } from './SpecialistsTab';
+import { SkyPetsAdminTab } from './SkyPetsAdminTab';
 import { GameInfraTab } from './GameInfraTab';
 import { CustomGiftsTab } from './CustomGiftsTab';
 import { AccountFreezeTab } from './AccountFreezeTab';
@@ -5671,7 +5672,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'jobs' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax' | 'royalties' | 'mediarestrict' | 'specialists' | 'gameinfra' | 'customgifts' | 'acctfreeze' | 'guide' | 'p2p' | 'adsplus' | 'bizrules' | 'chanmod' | 'life' | 'cfilter' | 'bloomcomm';
+type Tab = 'monitor' | 'skypets' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'jobs' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax' | 'royalties' | 'mediarestrict' | 'specialists' | 'gameinfra' | 'customgifts' | 'acctfreeze' | 'guide' | 'p2p' | 'adsplus' | 'bizrules' | 'chanmod' | 'life' | 'cfilter' | 'bloomcomm';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5901,6 +5902,7 @@ export const AdminPanel = () => {
     { key: 'prime', label: 'Sky Prime', show: has('prime') },
     { key: 'partners', label: 'Партнёры', show: has('partners') },
     { key: 'specialists', label: 'Биржа специалистов', show: has('specialists') },
+    { key: 'skypets', label: 'Sky Pets', show: has('pets_create') || has('pets_moderate') || has('pets_publish') },
     { key: 'p2p', label: 'Переводы', show: has('finance') },
     { key: 'adsplus', label: 'Реклама Sky', show: has('ads_manage') },
     { key: 'bizrules', label: 'Правила Business', show: has('business_rules') },
@@ -6160,6 +6162,7 @@ export const AdminPanel = () => {
       {tab === 'prime' && <PrimeTab />}
       {tab === 'partners' && <PartnersTab />}
       {tab === 'specialists' && <SpecialistsTab />}
+      {tab === 'skypets' && <SkyPetsAdminTab />}
       {tab === 'p2p' && <P2pTab />}
       {tab === 'adsplus' && <AdsPlusTab />}
       {tab === 'bizrules' && <BizRulesTab />}

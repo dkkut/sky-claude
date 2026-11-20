@@ -27,6 +27,8 @@ import { safeMediaUrl }      from './safeUrl';
 import { useAttachment }     from './mediaCache';
 import { apiUploadFile, MAX_FILE_BYTES } from '@/core/auth/api';
 import { PetBubble } from './PetPanel';
+import { openSkyPets } from '@/skypets/nav';
+import { ChatPetsCard } from '@/skypets/ChatPets';
 import { StickerPanel, MascotSticker, stickerById } from './mascotStickers';
 import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
@@ -1645,6 +1647,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 { icon: Gift, label: 'Отправить подарок', fn: () => { setShowGifts(true); setMenuOpen(false); } },
                 { icon: ShoppingCart, label: 'Магазин подарков', fn: () => { setShowMarket(true); setMenuOpen(false); } },
                 ...(chat.type === 'direct' ? [{ icon: Crown, label: 'Подарить Prime', fn: () => { setShowGiftPrime(true); setMenuOpen(false); }, tone: 'var(--amber)' }] : []),
+                ...(chat.type === 'direct' && !isSkyBotChat ? [{ icon: PawPrint, label: 'Питомцы', fn: () => { void openSkyPets({ peerId, peerName: chat.name, chatId: activeChatId }); setMenuOpen(false); } }] : []),
                 { icon: Palette, label: 'Тема чата', fn: () => { setShowTheme(true); setMenuOpen(false); } },
                 { icon: Archive, label: chat.archived ? 'Вернуть из архива' : 'В архив', fn: () => { useMessengerStore.getState().archiveChat(activeChatId); setMenuOpen(false); } },
                 // Управление лежало только внутри «Информации» — на два
@@ -1899,6 +1902,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   {chat.type === 'direct' ? `@${chat.username}` : `${chat.members ?? (chat.participants?.length ?? 0)} участников`}
                 </p>
               </div>
+              {chat.type === 'direct' && !isSkyBotChat && <ChatPetsCard peerId={peerId} peerName={chat.name} chatId={activeChatId} />}
               {chat.description && (
                 <div className="rounded-xl p-3" style={{ background: '#1e1e24' }}>
                   <p className="text-xs font-semibold mb-1" style={{ color: 'var(--t2)' }}>Описание</p>
