@@ -28,8 +28,8 @@ const PUBLISHED = `status = 'published'`;
 // ───────────────────────────── засев каталога ─────────────────────────────
 let seeded = null;
 export const ensureSeed = () => (seeded ??= (async () => {
-  const { rows } = await query(`SELECT count(*)::int AS n FROM sp_species WHERE builtin`);
-  if (rows[0].n >= SPECIES.length) return true;
+  const { rows } = await query(`SELECT (SELECT count(*) FROM sp_species WHERE builtin)::int AS n, (SELECT count(*) FROM sp_items WHERE builtin)::int AS i`);
+  if (rows[0].n >= SPECIES.length && rows[0].i >= ITEMS.length) return true;
   await inTx(async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['pets-seed']);
     for (const s of SPECIES) {

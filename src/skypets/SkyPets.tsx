@@ -22,6 +22,15 @@ const TABS = [['home', 'Мой дом'], ['pets', 'Мои питомцы'], ['sh
 type TabKey = (typeof TABS)[number][0];
 const WALL: Record<string, string> = { living: '#f6dcee', kitchen: '#ffeccc', bath: '#d6eefc', bed: '#e3dcff', play: '#dcf6d8', garden: '#d4f1ff' };
 const FLOOR: Record<string, string> = { living: '#e6c7a2', kitchen: '#e8d9c4', bath: '#bfd9e6', bed: '#cdb9e8', play: '#f0d98f', garden: '#9ed67a' };
+/** Встроенная обстановка комнат: рисуется всегда, не убирается и не мешает нажатиям; свою мебель человек ставит поверх. */
+const FIXTURES: Record<string, [string, number, number, number][]> = {
+  living: [['🖼️', 55, 24, 36], ['🕰️', 82, 20, 30], ['📺', 40, 70, 42], ['🛋️', 70, 78, 64], ['🪴', 91, 76, 44], ['🪴', 9, 78, 38]],
+  kitchen: [['🕰️', 60, 20, 30], ['🧊', 10, 72, 58], ['🍳', 26, 76, 44], ['🍽️', 62, 80, 48], ['🪑', 48, 82, 34], ['🪑', 78, 82, 34], ['🥣', 92, 84, 26]],
+  bath: [['🪞', 52, 28, 38], ['🚿', 72, 62, 52], ['🚰', 50, 72, 40], ['🛁', 22, 80, 54], ['🧼', 90, 82, 24], ['🧻', 84, 70, 26]],
+  bed: [['🪟', 62, 28, 46], ['💡', 42, 62, 26], ['🛏️', 22, 78, 66], ['🗄️', 42, 80, 36], ['🧸', 12, 86, 26], ['🚪', 90, 66, 54]],
+  play: [['🎈', 40, 24, 32], ['🎨', 80, 36, 36], ['🧩', 60, 84, 30], ['🧸', 20, 80, 40], ['⚽', 88, 84, 26], ['🛝', 74, 74, 52]],
+  garden: [['☀️', 50, 16, 36], ['🌳', 14, 62, 66], ['🏡', 82, 54, 56], ['🌷', 40, 84, 28], ['🌻', 52, 86, 28], ['🐝', 66, 36, 22], ['🌿', 92, 84, 28]],
+};
 const hash = (s: string) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 
 const NEED_TEXT: Record<string, string> = { feed: 'Хочу кушать! 🍖', bathe: 'Хочу помыться 🛁', play: 'Давай поиграем! 🎾', sleep: 'Хочу спать… 😴', heal: 'Мне нездоровится 💊' };
@@ -40,6 +49,7 @@ function Scene({ house, pets, room, decor, selected, onPet, onTap, onRemove, inv
       {room === 'kitchen' && <div className="absolute inset-x-[6%] top-[40%] h-[10%] rounded-xl" style={{ background: '#fff', opacity: .6 }} />}
       {room === 'bath' && <div className="absolute left-[8%] top-[48%] h-[26%] w-[34%] rounded-b-[40px] rounded-t-xl" style={{ background: '#fff', boxShadow: 'inset 0 -8px 0 #cfe6f3' }} />}
       {room === 'garden' && <div className="absolute left-0 right-0 top-[8%] mx-auto h-[26%] w-[26%] rounded-full" style={{ background: '#fff7b0', filter: 'blur(2px)' }} />}
+      {(FIXTURES[room] ?? []).map(([e, x, y, sz], i) => <span key={`fx${i}`} aria-hidden className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${x}%`, top: `${y}%`, fontSize: sz, opacity: 0.9, filter: 'drop-shadow(0 3px 3px rgba(0,0,0,.15))' }}>{e}</span>)}
       {placed.map((x) => <button key={x.uid} type="button" aria-label="Предмет" onClick={(e) => { e.stopPropagation(); if (decor && !locked) onRemove(x.uid); }} className="absolute -translate-x-1/2 -translate-y-1/2 text-[40px] leading-none" style={{ left: `${x.x}%`, top: `${x.y}%`, filter: decor ? 'drop-shadow(0 0 4px #7b5cf0)' : 'drop-shadow(0 3px 3px rgba(0,0,0,.2))', cursor: decor ? 'pointer' : 'default' }}>{icon(x.itemId)}</button>)}
       {pets.map((p, i) => {
         const h = hash(p.id), dx = 14 + (h % 60), dy = 52 + ((h >> 3) % 22); const target = p.sleeping ? (bed ? { x: bed.x, y: bed.y - 2 } : { x: 50, y: 74 }) : null;
