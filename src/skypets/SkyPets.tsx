@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useAuthStore } from '@/core/auth/store';
 import { useModuleStore } from '@/data/state/modules';
 import { sp, errText, ROOM, MOOD, type Overview, type House, type Pet, type InvRow } from './api';
@@ -13,10 +13,13 @@ import { usePetsNav } from './nav';
 const CSS = `
 @keyframes sp-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes sp-wob{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+@keyframes sp-zz{0%{opacity:0;transform:translate(0,0) scale(.7)}30%{opacity:1}100%{opacity:0;transform:translate(10px,-22px) scale(1.15)}}
+@keyframes sp-bub{0%{opacity:0;transform:translateY(6px) scale(.6)}40%{opacity:1}100%{opacity:0;transform:translateY(-22px) scale(1.1)}}
+.sp-zz{animation:sp-zz 2.6s ease-out infinite}.sp-bub{animation:sp-bub 2.2s ease-out infinite}
 @keyframes sp-z{0%{opacity:0;transform:translateY(0)}50%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
 .sp-bob{animation:sp-bob 2.4s ease-in-out infinite}.sp-wobble{animation:sp-wob .8s ease-in-out infinite;transform-origin:50% 90%}
 .sp-root *{-webkit-tap-highlight-color:transparent}
-@media (prefers-reduced-motion:reduce){.sp-bob,.sp-wobble{animation:none}}
+@media (prefers-reduced-motion:reduce){.sp-bob,.sp-wobble,.sp-zz,.sp-bub{animation:none}}
 html[data-animations='off'] .sp-bob,html[data-animations='off'] .sp-wobble{animation:none}
 `;
 const TABS = [['home', 'Мой дом'], ['pets', 'Мои питомцы'], ['shared', 'Совместные'], ['collection', 'Коллекция'], ['eggs', 'Яйца'], ['shop', 'Магазин'], ['inventory', 'Инвентарь'], ['city', 'Город питомцев'], ['tasks', 'Задания'], ['ach', 'Достижения'], ['friends', 'Друзья']] as const;
@@ -59,20 +62,64 @@ export function Scene({ house, pets, room, decor, selected, onPet, onTap, onRemo
       <div className="absolute inset-x-0 bottom-0" style={{ height: '50%', backgroundColor: floor, backgroundImage: pat.floor, backgroundSize: pat.floorSize, borderTop: '4px solid rgba(255,255,255,.6)', boxShadow: 'inset 0 10px 16px rgba(0,0,0,.07)' }} />
       {(FIXTURES[room] ?? []).map(([e, x, y, wp, k], i) => <span key={`fx${i}`} aria-hidden className="pointer-events-none absolute leading-none" style={{ left: `${x}%`, top: `${y}%`, width: `${wp}%`, transform: k === 'w' ? 'translate(-50%,-50%)' : 'translate(-50%,-94%)', zIndex: e === 'carpet' ? 0 : Math.round(y) }}><FurnArt name={e} size="100%" /></span>)}
       {placed.map((x) => <button key={x.uid} type="button" aria-label="Предмет" onClick={(e) => { e.stopPropagation(); if (decor && !locked) onRemove(x.uid); }} className="absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${x.x}%`, top: `${x.y}%`, filter: decor ? 'drop-shadow(0 0 4px #7b5cf0)' : 'drop-shadow(0 3px 3px rgba(0,0,0,.2))', cursor: decor ? 'pointer' : 'default' }}>{icon(x.itemId)}</button>)}
-      {pets.map((p, i) => {
-        const h = hash(p.id), dx = 18 + (h % 60), dy = 64 + ((h >> 3) % 20); const target = p.sleeping ? (bed ? { x: bed.x, y: bed.y - 2 } : { x: 50, y: 84 }) : null;
-        const need = p.needs[0]; const wander = p.sleeping ? [] : [dx, 22 + ((h >> 5) % 56), 80 - ((h >> 7) % 30), dx].map((v) => `${v}%`);
-        return (
-          <motion.button key={p.id} type="button" aria-label={p.name} onClick={(e) => { e.stopPropagation(); if (!decor) onPet(p, e.currentTarget); }} className="absolute -translate-x-1/2 -translate-y-full outline-none"
-            initial={false} animate={target ? { left: `${target.x}%`, top: `${target.y + 8}%` } : { left: wander, top: [`${dy}%`, `${Math.min(92, dy + 8)}%`, `${dy - 4}%`, `${dy}%`] }} transition={target ? { duration: 1.2 } : { duration: 26 + (h % 18), repeat: Infinity, ease: 'easeInOut', delay: i * 0.7 }} style={{ left: `${dx}%`, top: `${dy}%`, zIndex: 100 + Math.round(dy) }}>
-            {need && !p.sleeping && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: '#fff', color: INK, boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}>{NEED_TEXT[need]}</div>}
-            <div className={p.sleeping ? '' : 'sp-bob'}><PetPic pet={p} size={Math.round(W * 0.27)} /></div>
-          </motion.button>);
-      })}
+      {pets.map((p, i) => <PetActor key={p.id} p={p} i={i} room={room} W={W} decor={decor} bed={bed} onPet={onPet} />)}
       <div className="absolute left-3 top-3 rounded-full px-3 py-1 text-[12px] font-extrabold" style={{ background: 'rgba(255,255,255,.85)', color: INK }}>{ROOM[room] ?? room}</div>
       {decor && <div className="absolute inset-x-0 bottom-2 text-center text-[11px] font-bold" style={{ color: INK }}>{selected ? `Нажмите на сцену, чтобы поставить: ${selected.item?.name}` : 'Выберите предмет ниже. Нажмите на предмет в доме, чтобы убрать'}</div>}
     </div>
   );
+}
+
+
+type Spot = { x: number; y: number; kind: 'sofa' | 'bed' | 'tub' | 'chair' | 'slide' | 'rug' | 'tree'; clip: number; rot: number; x2?: number; y2?: number };
+/** Места, куда питомцы сами залезают: на диван, в кровать, в ванну, на стул, на горку. Координаты — под встроенную обстановку FIXTURES. */
+const SPOTS: Record<string, Spot[]> = {
+  living: [{ x: 46, y: 70, kind: 'sofa', clip: 0.26, rot: 0 }, { x: 52, y: 88, kind: 'rug', clip: 0, rot: -78 }],
+  kitchen: [{ x: 17, y: 84, kind: 'chair', clip: 0.3, rot: 0 }, { x: 83, y: 84, kind: 'chair', clip: 0.3, rot: 0 }],
+  bath: [{ x: 56, y: 86, kind: 'tub', clip: 0.42, rot: 0 }],
+  bed: [{ x: 40, y: 77, kind: 'bed', clip: 0.4, rot: -6 }, { x: 52, y: 90, kind: 'rug', clip: 0, rot: -78 }],
+  play: [{ x: 14, y: 52, kind: 'slide', clip: 0, rot: 0, x2: 33, y2: 70 }, { x: 52, y: 66, kind: 'rug', clip: 0.25, rot: 0 }],
+  garden: [{ x: 17, y: 70, kind: 'tree', clip: 0, rot: 0 }],
+};
+const ZZ = ['z', 'Z', 'z'];
+function PetActor({ p, i, room, W, decor, bed, onPet }: { p: Pet; i: number; room: string; W: number; decor: boolean; bed?: { x: number; y: number }; onPet: (p: Pet, el: HTMLElement) => void }) {
+  const reduce = useReducedMotion(); const h = hash(p.id); const need = p.needs[0]; const size = Math.round(W * 0.27);
+  const spots = SPOTS[room] ?? [];
+  // куда тянет: усталому — кровать/диван, грязному — ванна, остальным — по настроению питомца
+  const want = (kinds: Spot['kind'][]) => spots.find((s) => kinds.includes(s.kind));
+  let spot: Spot | undefined;
+  if (p.sleeping) spot = bed ? { x: bed.x, y: bed.y + 4, kind: 'bed', clip: 0.4, rot: -6 } : want(['bed', 'sofa', 'rug']);
+  else if (need === 'bathe') spot = want(['tub']);
+  else if (need === 'feed') spot = want(['chair']);
+  else spot = spots.length ? spots[h % spots.length] : undefined;
+  const dx = 18 + (h % 60), dy = 64 + ((h >> 3) % 20), bx = 22 + ((h >> 5) % 56), by = 80 - ((h >> 7) % 22);
+  const sleepy = p.sleeping || spot?.rot === -78 || spot?.kind === 'bed';
+  const still = p.sleeping || (need === 'bathe' && spot?.kind === 'tub');
+  const inset = (c: number) => `inset(0 0 ${Math.round(c * 100)}% 0)`;
+  let animate: any, transition: any, initial: any;
+  if (!spot) {
+    animate = { left: [dx, bx, dx + 8, dx].map((v) => `${v}%`), top: [dy, Math.min(90, dy + 6), dy - 3, dy].map((v) => `${v}%`) }; transition = { duration: 26 + (h % 14), repeat: Infinity, ease: 'easeInOut', delay: i * 0.7 };
+  } else if (still || reduce) {
+    animate = { left: `${spot.x}%`, top: `${spot.y}%`, rotate: spot.rot, clipPath: inset(spot.clip) }; transition = { duration: reduce ? 0 : 1.4, ease: 'easeInOut' };
+  } else if (spot.kind === 'slide') {
+    animate = { left: [dx, spot.x, spot.x2!, bx, dx].map((v) => `${v}%`), top: [dy, spot.y, spot.y2!, by, dy].map((v) => `${v}%`), rotate: [0, 0, 18, 0, 0] }; transition = { duration: 14 + (h % 6), repeat: Infinity, ease: 'easeInOut', times: [0, 0.22, 0.34, 0.6, 1], delay: i * 0.7 };
+  } else {
+    const dur = 24 + (h % 12); const c = spot.clip;
+    animate = { left: [dx, spot.x, spot.x, bx, dx].map((v) => `${v}%`), top: [dy, spot.y, spot.y, by, dy].map((v) => `${v}%`), rotate: [0, spot.rot, spot.rot, 0, 0], clipPath: [inset(0), inset(c), inset(c), inset(0), inset(0)] };
+    transition = { duration: dur, repeat: Infinity, ease: 'easeInOut', times: [0, 0.2, 0.62, 0.8, 1], delay: i * 0.7 };
+  }
+  const deco = spot && (sleepy || spot.kind === 'tub');
+  const decoAnim = still ? { opacity: 1 } : spot ? { opacity: [0, 1, 1, 0, 0] } : undefined;
+  const decoTr = still ? { duration: 0.8 } : spot ? { ...transition, ease: 'linear', delay: transition.delay } : undefined;
+  return (
+    <motion.button type="button" aria-label={p.name} onClick={(e) => { e.stopPropagation(); if (!decor) onPet(p, e.currentTarget); }} className="absolute outline-none"
+      initial={false} animate={animate} transition={transition} style={{ x: '-50%', y: '-100%', transformOrigin: '50% 90%', left: `${spot?.x ?? dx}%`, top: `${spot?.y ?? dy}%`, zIndex: 100 + Math.round(spot?.y ?? dy) + (spot?.kind === 'tub' || spot?.kind === 'bed' ? 3 : 0) }}>
+      {need && !p.sleeping && <div className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ top: -22, background: '#fff', color: INK, boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}>{NEED_TEXT[need]}</div>}
+      <div className={still || reduce ? '' : 'sp-bob'}><PetPic pet={p} size={size} /></div>
+      {deco && decoAnim && <motion.div aria-hidden className="pointer-events-none absolute inset-0" initial={false} animate={decoAnim} transition={decoTr}>
+        {sleepy ? ZZ.map((z, k) => <span key={k} className="sp-zz absolute font-extrabold" style={{ left: `${62 + k * 12}%`, top: `${-4 - k * 10}%`, fontSize: size * (0.2 + k * 0.06), color: '#7b5cf0', animationDelay: `${k * 0.7}s`, textShadow: '0 1px 0 #fff' }}>{z}</span>)
+          : [0, 1, 2, 3].map((k) => <span key={k} className="sp-bub absolute rounded-full" style={{ left: `${10 + k * 24}%`, top: `${40 + (k % 2) * 14}%`, width: size * (0.13 + (k % 3) * 0.04), height: size * (0.13 + (k % 3) * 0.04), background: 'rgba(255,255,255,.9)', border: '2px solid #bfe4ff', animationDelay: `${k * 0.5}s` }} />)}
+      </motion.div>}
+    </motion.button>);
 }
 
 export default function SkyPets() {
