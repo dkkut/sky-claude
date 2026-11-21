@@ -61,7 +61,7 @@ const ART: Record<string, ReactNode> = {
 /** Какие ключи art.icon нарисованы векторно. */
 export const hasArt = (k?: string) => !!k && k in ART;
 
-export function FurnArt({ name, size = 56, className, style }: { name: string; size?: number; className?: string; style?: React.CSSProperties }) {
+export function FurnArt({ name, size = 56, className, style }: { name: string; size?: number | string; className?: string; style?: React.CSSProperties }) {
   const a = ART[name]; if (!a) return null;
   return <svg viewBox="0 0 100 100" width={size} height={size} className={className} style={{ display: 'block', ...style }} aria-hidden="true" xmlns="http://www.w3.org/2000/svg">{a}</svg>;
 }

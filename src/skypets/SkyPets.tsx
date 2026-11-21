@@ -24,42 +24,49 @@ type TabKey = (typeof TABS)[number][0];
 const WALL: Record<string, string> = { living: '#f6dcee', kitchen: '#ffeccc', bath: '#d6eefc', bed: '#e3dcff', play: '#dcf6d8', garden: '#d4f1ff' };
 const FLOOR: Record<string, string> = { living: '#e6c7a2', kitchen: '#e8d9c4', bath: '#bfd9e6', bed: '#cdb9e8', play: '#f0d98f', garden: '#9ed67a' };
 /** Встроенная обстановка комнат: рисуется всегда, не убирается и не мешает нажатиям; свою мебель человек ставит поверх. */
-const FIXTURES: Record<string, [string, number, number, number][]> = {
-  living: [['picture', 52, 26, 40], ['clock', 82, 22, 26], ['tv', 38, 66, 44], ['sofa', 70, 74, 66], ['plant', 92, 72, 42], ['plant', 8, 76, 40], ['carpet', 54, 90, 90]],
-  kitchen: [['clock', 58, 22, 26], ['fridge', 10, 62, 66], ['stove', 28, 70, 50], ['table', 62, 76, 56], ['chair', 46, 78, 36], ['chair', 80, 78, 36], ['flowers', 92, 78, 30]],
-  bath: [['mirror', 52, 30, 40], ['shower', 72, 60, 54], ['sink', 48, 72, 44], ['tub', 22, 74, 58], ['plant', 92, 78, 34]],
-  bed: [['window', 62, 32, 50], ['lamp', 40, 62, 34], ['bed', 24, 74, 70], ['nightstand', 42, 78, 38], ['teddy', 12, 86, 26], ['door', 90, 58, 56]],
-  play: [['balloon', 40, 26, 34], ['easel', 80, 56, 52], ['blocks', 58, 82, 34], ['teddy', 20, 78, 40], ['ball', 88, 84, 24], ['slide', 72, 70, 52]],
-  garden: [['sun', 50, 18, 34], ['tree', 14, 60, 66], ['house', 82, 54, 58], ['tulip', 40, 82, 30], ['tulip', 52, 84, 30], ['bush', 92, 82, 32]],
+/** [рисунок, x %, y %, ширина % сцены, 'w' — висит на стене/лежит (y — центр), иначе y — «ножки» на полу]. Пол — нижняя половина сцены. */
+const FIXTURES: Record<string, [string, number, number, number, string?][]> = {
+  living: [['carpet', 50, 84, 72, 'w'], ['picture', 28, 24, 30, 'w'], ['window', 72, 27, 32, 'w'], ['clock', 50, 11, 13, 'w'], ['lamp', 9, 70, 16], ['sofa', 46, 74, 66], ['plant', 91, 74, 22]],
+  kitchen: [['clock', 50, 10, 13, 'w'], ['fridge', 14, 56, 30], ['stove', 45, 56, 30], ['sink', 76, 56, 30], ['table', 50, 88, 66], ['chair', 17, 86, 24], ['chair', 83, 86, 24]],
+  bath: [['mirror', 50, 24, 22, 'w'], ['shower', 17, 58, 30], ['sink', 50, 56, 34], ['tub', 56, 90, 70], ['plant', 9, 80, 20]],
+  bed: [['window', 30, 25, 32, 'w'], ['picture', 70, 23, 24, 'w'], ['carpet', 50, 90, 60, 'w'], ['wardrobe', 88, 56, 26], ['lamp', 10, 68, 16], ['bed', 40, 82, 66], ['nightstand', 82, 76, 26], ['teddy', 12, 92, 18]],
+  play: [['balloon', 24, 22, 22, 'w'], ['balloon', 72, 18, 18, 'w'], ['tunnel', 52, 66, 36], ['slide', 22, 70, 40], ['easel', 80, 72, 34], ['blocks', 48, 90, 26], ['ball', 88, 92, 16]],
+  garden: [['sun', 50, 14, 26, 'w'], ['fence', 52, 55, 40], ['tree', 17, 66, 46], ['house', 80, 62, 46], ['bush', 92, 90, 28], ['tulip', 30, 92, 18], ['tulip', 42, 93, 18]],
+};
+/** Узоры стен и пола: у каждой комнаты свой (полоски, шахматка, ромбы, дерево). */
+const PATTERN = (room: string): { wall: string; wallSize?: string; floor: string; floorSize?: string } => {
+  const w = 'rgba(255,255,255,.38)', d = 'rgba(0,0,0,.05)';
+  if (room === 'living') return { wall: `repeating-linear-gradient(90deg,transparent 0 38px,${w} 38px 76px)`, floor: `repeating-linear-gradient(0deg,transparent 0 46px,${d} 46px 49px)` };
+  if (room === 'kitchen') return { wall: `repeating-linear-gradient(90deg,transparent 0 38px,${w} 38px 76px)`, floor: `linear-gradient(45deg,${w} 25%,transparent 25% 75%,${w} 75%),linear-gradient(45deg,${w} 25%,transparent 25% 75%,${w} 75%)`, floorSize: '80px 80px', };
+  if (room === 'bath') return { wall: `conic-gradient(${w} 25%,transparent 0 50%,${w} 0 75%,transparent 0)`, wallSize: '90px 90px', floor: `linear-gradient(${w} 2px,transparent 2px),linear-gradient(90deg,${w} 2px,transparent 2px)`, floorSize: '64px 64px' };
+  if (room === 'bed') return { wall: `repeating-linear-gradient(0deg,transparent 0 56px,${w} 56px 66px)`, floor: `radial-gradient(${w} 3px,transparent 4px)`, floorSize: '48px 48px' };
+  if (room === 'play') return { wall: `radial-gradient(${w} 6px,transparent 7px)`, wallSize: '52px 52px', floor: `repeating-linear-gradient(90deg,transparent 0 60px,${d} 60px 120px)` };
+  return { wall: 'none', floor: `repeating-linear-gradient(90deg,transparent 0 40px,${d} 40px 80px)` };
 };
 const hash = (s: string) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 
 const NEED_TEXT: Record<string, string> = { feed: 'Хочу кушать! 🍖', bathe: 'Хочу помыться 🛁', play: 'Давай поиграем! 🎾', sleep: 'Хочу спать… 😴', heal: 'Мне нездоровится 💊' };
 const REACT = ['Мур-р! 💛', 'Ура, это ты!', 'Ещё погладь!', '😊', 'Я скучал(а)!'];
 
-function Scene({ house, pets, room, decor, selected, onPet, onTap, onRemove, inv, locked }: { house: House; pets: Pet[]; room: string; decor: boolean; selected: InvRow | null; onPet: (p: Pet, el: HTMLElement) => void; onTap: (x: number, y: number) => void; onRemove: (uid: string) => void; inv: InvRow[]; locked?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null); const st = house.style?.[room] ?? {}; const wall = st.wall ?? WALL[room] ?? '#eee', floor = st.floor ?? FLOOR[room] ?? '#ddd';
+export function Scene({ house, pets, room, decor, selected, onPet, onTap, onRemove, inv, locked }: { house: House; pets: Pet[]; room: string; decor: boolean; selected: InvRow | null; onPet: (p: Pet, el: HTMLElement) => void; onTap: (x: number, y: number) => void; onRemove: (uid: string) => void; inv: InvRow[]; locked?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null); const [W, setW] = useState(360); useEffect(() => { const el = ref.current; if (!el) return; const ro = new ResizeObserver(() => setW(el.clientWidth || 360)); ro.observe(el); setW(el.clientWidth || 360); return () => ro.disconnect(); }, []); const pat = PATTERN(room); const st = house.style?.[room] ?? {}; const wall = st.wall ?? WALL[room] ?? '#eee', floor = st.floor ?? FLOOR[room] ?? '#ddd';
   const placed = house.placed.filter((x) => x.room === room); const bed = placed.find((x) => x.itemId.startsWith('bed'));
   const items = useMemo(() => new Map(inv.map((r) => [r.itemId, r.item])), [inv]);
-  const icon = (id: string) => { const it = items.get(id); const k = id.startsWith('bed') ? 'bed' : id.startsWith('bowl') ? 'bowl' : id.startsWith('furn') ? 'sofa' : id.startsWith('decor') ? 'plant' : id.startsWith('toy') ? 'teddy' : ''; return it ? <ItemArt item={it} size={52} /> : k ? <FurnArt name={k} size={52} /> : <span className="text-[40px]">🎁</span>; };
+  const icon = (id: string) => { const it = items.get(id); const k = id.startsWith('bed') ? 'bed' : id.startsWith('bowl') ? 'bowl' : id.startsWith('furn') ? 'sofa' : id.startsWith('decor') ? 'plant' : id.startsWith('toy') ? 'teddy' : ''; return it ? <ItemArt item={it} size={Math.round(W * 0.2)} /> : k ? <FurnArt name={k} size={Math.round(W * 0.2)} /> : <span className="text-[40px]">🎁</span>; };
   return (
-    <div ref={ref} className="relative w-full select-none overflow-hidden rounded-[30px]" style={{ aspectRatio: '16 / 10', minHeight: 230, background: wall, boxShadow: 'inset 0 -8px 24px rgba(0,0,0,.06), 0 12px 30px rgba(90,60,190,.18)', cursor: decor && selected ? 'crosshair' : 'default' }}
+    <div ref={ref} className="relative mx-auto w-full select-none overflow-hidden rounded-[30px]" style={{ aspectRatio: '4 / 5', maxWidth: 600, backgroundColor: wall, backgroundImage: pat.wall, backgroundSize: pat.wallSize, boxShadow: 'inset 0 -8px 24px rgba(0,0,0,.06), 0 12px 30px rgba(90,60,190,.18)', cursor: decor && selected ? 'crosshair' : 'default' }}
       onClick={(e) => { if (!decor || !selected || !ref.current) return; const r = ref.current.getBoundingClientRect(); onTap(((e.clientX - r.left) / r.width) * 100, ((e.clientY - r.top) / r.height) * 100); }}>
-      <div className="absolute inset-x-0 bottom-0" style={{ height: '36%', background: `linear-gradient(180deg,${floor},${floor}dd)`, borderTop: '3px solid rgba(255,255,255,.5)' }} />
-      {room === 'living' && <div className="absolute left-[8%] top-[12%] h-[34%] w-[22%] rounded-2xl" style={{ background: 'linear-gradient(180deg,#bfe4ff,#e8f6ff)', border: '5px solid #fff' }} />}
-      {room === 'kitchen' && <div className="absolute inset-x-[6%] top-[40%] h-[10%] rounded-xl" style={{ background: '#fff', opacity: .6 }} />}
-      {room === 'bath' && <div className="absolute left-[8%] top-[48%] h-[26%] w-[34%] rounded-b-[40px] rounded-t-xl" style={{ background: '#fff', boxShadow: 'inset 0 -8px 0 #cfe6f3' }} />}
-      {room === 'garden' && <div className="absolute left-0 right-0 top-[8%] mx-auto h-[26%] w-[26%] rounded-full" style={{ background: '#fff7b0', filter: 'blur(2px)' }} />}
-      {(FIXTURES[room] ?? []).map(([e, x, y, sz], i) => <span key={`fx${i}`} aria-hidden className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${x}%`, top: `${y}%`, zIndex: e === 'carpet' ? 0 : undefined }}><FurnArt name={e} size={sz * 1.25} /></span>)}
+      <div className="absolute inset-x-0 bottom-0" style={{ height: '50%', backgroundColor: floor, backgroundImage: pat.floor, backgroundSize: pat.floorSize, borderTop: '4px solid rgba(255,255,255,.6)', boxShadow: 'inset 0 10px 16px rgba(0,0,0,.07)' }} />
+      {(FIXTURES[room] ?? []).map(([e, x, y, wp, k], i) => <span key={`fx${i}`} aria-hidden className="pointer-events-none absolute leading-none" style={{ left: `${x}%`, top: `${y}%`, width: `${wp}%`, transform: k === 'w' ? 'translate(-50%,-50%)' : 'translate(-50%,-94%)', zIndex: e === 'carpet' ? 0 : Math.round(y) }}><FurnArt name={e} size="100%" /></span>)}
       {placed.map((x) => <button key={x.uid} type="button" aria-label="Предмет" onClick={(e) => { e.stopPropagation(); if (decor && !locked) onRemove(x.uid); }} className="absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${x.x}%`, top: `${x.y}%`, filter: decor ? 'drop-shadow(0 0 4px #7b5cf0)' : 'drop-shadow(0 3px 3px rgba(0,0,0,.2))', cursor: decor ? 'pointer' : 'default' }}>{icon(x.itemId)}</button>)}
       {pets.map((p, i) => {
-        const h = hash(p.id), dx = 14 + (h % 60), dy = 52 + ((h >> 3) % 22); const target = p.sleeping ? (bed ? { x: bed.x, y: bed.y - 2 } : { x: 50, y: 74 }) : null;
-        const need = p.needs[0]; const wander = p.sleeping ? [] : [dx, 24 + ((h >> 5) % 50), 70 - ((h >> 7) % 35), dx].map((v) => `${v}%`);
+        const h = hash(p.id), dx = 18 + (h % 60), dy = 64 + ((h >> 3) % 20); const target = p.sleeping ? (bed ? { x: bed.x, y: bed.y - 2 } : { x: 50, y: 84 }) : null;
+        const need = p.needs[0]; const wander = p.sleeping ? [] : [dx, 22 + ((h >> 5) % 56), 80 - ((h >> 7) % 30), dx].map((v) => `${v}%`);
         return (
           <motion.button key={p.id} type="button" aria-label={p.name} onClick={(e) => { e.stopPropagation(); if (!decor) onPet(p, e.currentTarget); }} className="absolute -translate-x-1/2 -translate-y-full outline-none"
-            initial={false} animate={target ? { left: `${target.x}%`, top: `${target.y + 8}%` } : { left: wander, top: [`${dy}%`, `${dy + 8}%`, `${dy - 4}%`, `${dy}%`] }} transition={target ? { duration: 1.2 } : { duration: 26 + (h % 18), repeat: Infinity, ease: 'easeInOut', delay: i * 0.7 }} style={{ left: `${dx}%`, top: `${dy}%`, zIndex: Math.round(dy) }}>
+            initial={false} animate={target ? { left: `${target.x}%`, top: `${target.y + 8}%` } : { left: wander, top: [`${dy}%`, `${Math.min(92, dy + 8)}%`, `${dy - 4}%`, `${dy}%`] }} transition={target ? { duration: 1.2 } : { duration: 26 + (h % 18), repeat: Infinity, ease: 'easeInOut', delay: i * 0.7 }} style={{ left: `${dx}%`, top: `${dy}%`, zIndex: 100 + Math.round(dy) }}>
             {need && !p.sleeping && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: '#fff', color: INK, boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}>{NEED_TEXT[need]}</div>}
-            <div className={p.sleeping ? '' : 'sp-bob'}><PetPic pet={p} size={84} /></div>
+            <div className={p.sleeping ? '' : 'sp-bob'}><PetPic pet={p} size={Math.round(W * 0.27)} /></div>
           </motion.button>);
       })}
       <div className="absolute left-3 top-3 rounded-full px-3 py-1 text-[12px] font-extrabold" style={{ background: 'rgba(255,255,255,.85)', color: INK }}>{ROOM[room] ?? room}</div>
