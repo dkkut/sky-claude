@@ -73,10 +73,10 @@ export function Scene({ house, pets, room, decor, selected, onPet, onTap, onRemo
 type Spot = { x: number; y: number; kind: 'sofa' | 'bed' | 'tub' | 'chair' | 'slide' | 'rug' | 'tree'; clip: number; rot: number; x2?: number; y2?: number };
 /** Места, куда питомцы сами залезают: на диван, в кровать, в ванну, на стул, на горку. Координаты — под встроенную обстановку FIXTURES. */
 const SPOTS: Record<string, Spot[]> = {
-  living: [{ x: 46, y: 70, kind: 'sofa', clip: 0.26, rot: 0 }, { x: 52, y: 88, kind: 'rug', clip: 0, rot: -78 }],
-  kitchen: [{ x: 17, y: 84, kind: 'chair', clip: 0.3, rot: 0 }, { x: 83, y: 84, kind: 'chair', clip: 0.3, rot: 0 }],
-  bath: [{ x: 56, y: 86, kind: 'tub', clip: 0.42, rot: 0 }],
-  bed: [{ x: 40, y: 77, kind: 'bed', clip: 0.4, rot: -6 }, { x: 52, y: 90, kind: 'rug', clip: 0, rot: -78 }],
+  living: [{ x: 46, y: 66, kind: 'sofa', clip: 0.3, rot: 0 }],
+  kitchen: [{ x: 17, y: 79, kind: 'chair', clip: 0.32, rot: 0 }, { x: 83, y: 79, kind: 'chair', clip: 0.32, rot: 0 }],
+  bath: [{ x: 56, y: 85, kind: 'tub', clip: 0.42, rot: 0 }],
+  bed: [{ x: 38, y: 71, kind: 'bed', clip: 0.46, rot: 0 }],
   play: [{ x: 14, y: 52, kind: 'slide', clip: 0, rot: 0, x2: 33, y2: 70 }, { x: 52, y: 66, kind: 'rug', clip: 0.25, rot: 0 }],
   garden: [{ x: 17, y: 70, kind: 'tree', clip: 0, rot: 0 }],
 };
@@ -87,12 +87,12 @@ function PetActor({ p, i, room, W, decor, bed, onPet }: { p: Pet; i: number; roo
   // куда тянет: усталому — кровать/диван, грязному — ванна, остальным — по настроению питомца
   const want = (kinds: Spot['kind'][]) => spots.find((s) => kinds.includes(s.kind));
   let spot: Spot | undefined;
-  if (p.sleeping) spot = bed ? { x: bed.x, y: bed.y + 4, kind: 'bed', clip: 0.4, rot: -6 } : want(['bed', 'sofa', 'rug']);
+  if (p.sleeping) spot = bed ? { x: bed.x, y: bed.y + 4, kind: 'bed', clip: 0.46, rot: 0 } : want(['bed', 'sofa', 'rug']);
   else if (need === 'bathe') spot = want(['tub']);
   else if (need === 'feed') spot = want(['chair']);
   else spot = spots.length ? spots[h % spots.length] : undefined;
-  const dx = 18 + (h % 60), dy = 64 + ((h >> 3) % 20), bx = 22 + ((h >> 5) % 56), by = 80 - ((h >> 7) % 22);
-  const sleepy = p.sleeping || spot?.rot === -78 || spot?.kind === 'bed';
+  const lo = room === 'kitchen' ? 91 : 64, span = room === 'kitchen' ? 5 : 20; const dx = 18 + (h % 60), dy = lo + ((h >> 3) % span), bx = 22 + ((h >> 5) % 56), by = lo + ((h >> 7) % span);
+  const sleepy = p.sleeping || spot?.kind === 'bed';
   const still = p.sleeping || (need === 'bathe' && spot?.kind === 'tub');
   const inset = (c: number) => `inset(0 0 ${Math.round(c * 100)}% 0)`;
   let animate: any, transition: any, initial: any;
