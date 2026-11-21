@@ -15,11 +15,15 @@ export type Mode = 'online' | 'point' | 'both';
 export type LegalType = 'person' | 'selfemployed' | 'ip' | 'company' | 'other';
 export interface Business {
   id: string; name: string; description: string; category: string; country: string; mode: Mode; legalType: LegalType; legalVerified: boolean;
-  contacts: string; website: string; hasLogo: boolean; status: 'draft' | 'active' | 'suspended'; suspendedReason?: string; createdAt: string;
+  contacts: string; website: string; currencies?: string[]; hasLogo: boolean; status: 'draft' | 'active' | 'suspended'; suspendedReason?: string; createdAt: string;
 }
+/** Валюты, которые организация может принимать прямым переводом. Sky курсов не знает и ничего не пересчитывает. */
+export const CURRENCIES: Record<string, string> = { RUB: '₽', USD: '$', EUR: '€', GBP: '£', CNY: '¥', KZT: '₸', TRY: '₺', BYN: 'Br', AED: 'AED' };
+export const CURRENCY_NAMES: Record<string, string> = { RUB: 'Российский рубль', USD: 'Доллар США', EUR: 'Евро', GBP: 'Фунт стерлингов', CNY: 'Юань', KZT: 'Тенге', TRY: 'Турецкая лира', BYN: 'Белорусский рубль', AED: 'Дирхам ОАЭ' };
+export const money = (n: number | string, cur = 'RUB') => `${n} ${CURRENCIES[cur] ?? cur}`;
 export interface Subscription { status: 'inactive' | 'active' | 'expiring' | 'suspended' | 'expired'; active: boolean; startedAt?: string | null; expiresAt?: string | null; priceRub: number; periodDays: number }
 export interface Requisites { holder: string; method: 'phone' | 'account' | 'card' | 'other'; value: string; bank?: string; purpose?: string; instruction?: string; extra?: string; updatedAt?: string }
-export interface Me { business: Business | null; subscription: Subscription; requisites?: Requisites | null; payOrigin?: string; role?: 'owner' | StaffRole | null; roleLabel?: string; invites?: { id: string; role: string; roleLabel: string; business: string }[] }
+export interface Me { business: Business | null; subscription: Subscription; requisites?: Requisites | null; currencyRequisites?: Record<string, Requisites>; payOrigin?: string; role?: 'owner' | StaffRole | null; roleLabel?: string; invites?: { id: string; role: string; roleLabel: string; business: string }[] }
 export interface Qr {
   id: string; publicId: string; kind: 'pay' | 'permanent' | 'tip' | 'order' | 'invoice'; title: string; description: string; amountRub: number | null; currency: string; orderNo: string;
   instruction: string; expiresAt: string | null; status: 'active' | 'disabled' | 'archived'; createdAt: string; url: string; opens: number; requests: number; confirmed: number;
@@ -28,7 +32,7 @@ export interface Payment {
   id: string; qrId: string | null; qrTitle?: string; amountRub: number; currency: string; orderNo: string; status: string; statusLabel: string; source: string;
   buyerNote: string; ownerComment: string; reportedAt: string | null; confirmedAt: string | null; createdAt: string;
 }
-export interface Stats { qr: number; opens: number; requests: number; awaiting: number; confirmed: number; claimedSumRub: number; confirmedByOwnerSumRub: number; confirmedByIntegrationSumRub: number }
+export interface Stats { qr: number; opens: number; requests: number; awaiting: number; confirmed: number; claimedSumRub: number; confirmedByOwnerSumRub: number; confirmedByIntegrationSumRub: number; byCurrency?: { currency: string; claimed: number; confirmed: number; confirmedCount: number }[] }
 export interface AuditItem { actor: 'owner' | 'other'; action: string; detail: string; at: string }
 
 export const kbMe = () => req<Me>('/api/kbiz/me');
@@ -39,6 +43,7 @@ export const kbCreateOrg = (b: unknown) => send<{ id: string }>('POST', '/api/kb
 export const kbSwitchOrg = (id: string) => send<{ id: string }>('POST', `/api/kbiz/organizations/${id}/switch`);
 export const kbUpdateBusiness = (b: unknown) => send<unknown>('PUT', '/api/kbiz/business', b);
 export const kbSetLogo = (dataUrl: string) => send<unknown>('PUT', '/api/kbiz/business/logo', { dataUrl });
+export const kbSetCurrencies = (currencies: string[]) => send<{ currencies: string[] }>('PUT', '/api/kbiz/currencies', { currencies });
 export const kbSetRequisites = (b: unknown) => send<{ changed?: string[] }>('PUT', '/api/kbiz/requisites', b);
 export const kbPublish = (on: boolean) => send<{ status: string }>('POST', '/api/kbiz/publish', { on });
 export const kbSubscription = () => req<{ subscription: Subscription; history: { id: string; priceRub: number; startedAt: string; expiresAt: string; at: string }[] }>('/api/kbiz/subscription');
@@ -62,7 +67,7 @@ export const kbExportCsv = async (): Promise<Blob | null> => {
 export interface PublicPage {
   business: { name: string; description: string; hasLogo: boolean; logoUrl: string | null; website?: string; contacts?: string };
   title: string; description: string; state: 'open' | 'expired' | 'disabled' | 'unavailable' | 'suspended'; kind: string;
-  amountRub?: number | null; currency?: string; orderNo?: string; instruction?: string; note?: string; minAmountRub?: number; maxAmountRub?: number;
+  amountRub?: number | null; currency?: string; currencies?: string[]; requisitesByCurrency?: Record<string, { holder: string; method: string; value: string; bank?: string; purpose?: string; extra?: string } | null>; orderNo?: string; instruction?: string; note?: string; minAmountRub?: number; maxAmountRub?: number;
   requisites?: { holder: string; method: string; value: string; bank?: string; purpose?: string; extra?: string };
   provider?: boolean;
   tip?: { recipient: string; message?: string; amounts: number[]; allowCustom: boolean; photoUrl: string | null };
@@ -75,7 +80,7 @@ export const pubPage = async (pid: string): Promise<{ ok: true; data: PublicPage
     return r.ok ? { ok: true, data: d } : { ok: false, error: d.error ?? 'error' };
   } catch { return { ok: false, error: 'network' }; }
 };
-export const pubReport = async (pid: string, b: { amountRub?: number; note?: string; website?: string }) => {
+export const pubReport = async (pid: string, b: { amountRub?: number; currency?: string; note?: string; website?: string }) => {
   try {
     const r = await fetch(uploadUrl(`/api/kbiz/public/p/${encodeURIComponent(pid)}/report`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
     const d = await r.json().catch(() => ({}));
@@ -133,7 +138,7 @@ export interface Promo { id: string; code: string; kind: 'percent' | 'fixed'; va
 export interface Review { id: string; rating: number; text: string; author: string; reply: string; status: 'published' | 'hidden'; createdAt: string; orderNo: number }
 export interface CashItem { id: string; publicId: string; amountRub: number; status: string; createdAt: string; url: string }
 export interface Analytics {
-  days: number; requests: number; confirmed: number; claimedSumRub: number; confirmedSumRub: number; averageRub: number; notFound: number; refunded: number; opens: number; conversionPercent: number | null;
+  days: number; requests: number; confirmed: number; claimedSumRub: number; confirmedSumRub: number; averageRub: number; notFound: number; refunded: number; opens: number; conversionPercent: number | null; byCurrency?: { currency: string; confirmed: number; confirmedSum: number; claimedSum: number }[];
   byDay: { day: string; requests: number; confirmedSumRub: number }[]; byKind: { kind: string; requests: number; confirmed: number; confirmedSumRub: number }[];
   topItems: { title: string; qty: number; sumRub: number }[]; orders: { total: number; done: number; lost: number; discountsRub: number }; reviews: { count: number; average: number };
 }

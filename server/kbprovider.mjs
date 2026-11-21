@@ -104,6 +104,7 @@ export const providerAvailable = async (businessId) => { const p = await provOf(
 export const providerPay = async (pid, body, ip) => {
   const q = await loadPublic(pid); if (!q) return err('not_found');
   if ((await pageState(q)) !== 'open') return err('page_unavailable');
+  if (q.currency !== 'RUB' || (body?.currency && String(body.currency).toUpperCase() !== 'RUB')) return err('provider_rub_only');   // протокол партнёра рублёвый
   const prov = await provOf(q.biz_id); if (!prov || !prov.enabled) return err('provider_not_set');
   let amount = q.amount_rub;
   if (amount == null) { amount = Number(body?.amountRub); const lo = q.kind === 'tip' ? Number(q.config?.min) || 1 : 1; const hi = q.kind === 'tip' ? Number(q.config?.max) || MAX_AMOUNT : MAX_AMOUNT; if (!Number.isInteger(amount) || amount < lo || amount > hi) return err('bad_amount'); }

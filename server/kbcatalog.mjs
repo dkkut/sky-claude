@@ -352,14 +352,14 @@ export const listTips = async (profileId) => {
             (SELECT count(*)::int FROM kb_qr_opens o WHERE o.qr_id = q.id) AS opens,
             (SELECT count(*)::int FROM kb_payments p WHERE p.qr_id = q.id AND p.status <> 'created') AS requests,
             (SELECT count(*)::int FROM kb_payments p WHERE p.qr_id = q.id AND p.status = 'confirmed') AS confirmed,
-            (SELECT COALESCE(SUM(amount_rub), 0)::int FROM kb_payments p WHERE p.qr_id = q.id AND p.status = 'confirmed') AS confirmed_sum
+            (SELECT COALESCE(SUM(amount_rub), 0)::int FROM kb_payments p WHERE p.qr_id = q.id AND p.currency = 'RUB' AND p.status = 'confirmed') AS confirmed_sum
        FROM kb_qr q WHERE q.business_id = $1 AND q.kind = 'tip' AND q.status <> 'archived' ORDER BY q.created_at DESC LIMIT 100`, [b.id]);
   const { rows: s } = await query(
     `SELECT count(*) FILTER (WHERE p.status <> 'created')::int AS requests, count(*) FILTER (WHERE p.status = 'confirmed')::int AS confirmed,
-            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status = 'confirmed'), 0)::int AS confirmed_sum
+            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.currency = 'RUB' AND p.status = 'confirmed'), 0)::int AS confirmed_sum
        FROM kb_payments p JOIN kb_qr q ON q.id = p.qr_id WHERE q.business_id = $1 AND q.kind = 'tip'`, [b.id]);
   const { rows: d } = await query(
-    `SELECT to_char(date_trunc('day', p.created_at), 'YYYY-MM-DD') AS day, count(*)::int AS requests, COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status = 'confirmed'), 0)::int AS confirmed_sum
+    `SELECT to_char(date_trunc('day', p.created_at), 'YYYY-MM-DD') AS day, count(*)::int AS requests, COALESCE(SUM(p.amount_rub) FILTER (WHERE p.currency = 'RUB' AND p.status = 'confirmed'), 0)::int AS confirmed_sum
        FROM kb_payments p JOIN kb_qr q ON q.id = p.qr_id WHERE q.business_id = $1 AND q.kind = 'tip' AND p.created_at > now() - interval '30 days' AND p.status <> 'created' GROUP BY 1 ORDER BY 1`, [b.id]);
   return {
     tips: rows.map((r) => ({ id: r.id, publicId: r.public_id, title: r.title, status: r.status, recipient: r.config?.recipient, message: r.config?.message, amounts: r.config?.amounts, allowCustom: r.config?.allowCustom !== false,

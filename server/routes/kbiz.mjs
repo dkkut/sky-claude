@@ -1,7 +1,7 @@
 import { json, parseBody, requireProfile, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { isClosed } from './../modclosure.mjs';
-import { listOrgs, switchOrg, audit, myBusiness, createBusiness, updateBusiness, setLogo, logoOf, setRequisites, publish, subState, subHistory, buySub, listQr, createQr, setQrStatus,
+import { listOrgs, switchOrg, audit, myBusiness, createBusiness, updateBusiness, setLogo, logoOf, setRequisites, setCurrencies, publish, subState, subHistory, buySub, listQr, createQr, setQrStatus,
   publicPage, reportPayment, buyerStatus, listPayments, paymentLog, actOnPayment, auditList, exportPaymentsCsv, overview, scan, SUB_PRICE_RUB, SUB_PERIOD_DAYS } from './../kbiz.mjs';
 import { query } from './../db.mjs';
 import * as cat from './../kbcatalog.mjs';
@@ -13,7 +13,7 @@ import * as ad from './../kbadmin.mjs';
 
 const MULT = Math.max(1, Number(process.env.KBIZ_RATE_MULT) || 1);        // для тестов
 const STATUS = { not_found: 404, no_business: 404, already_exists: 409, too_many_orgs: 409, bad_state: 409, suspended: 403, subscription_required: 402, insufficient_funds: 402, bad_field: 400, bad_action: 400,
-  bad_status: 400, bad_logo: 400, logo_too_large: 413, secret_words: 400, requisites_required: 409, too_many_qr: 429, too_many_requests: 429, comment_required: 400, bad_amount: 400,
+  bad_status: 400, bad_logo: 400, logo_too_large: 413, secret_words: 400, requisites_required: 409, too_many_qr: 429, too_many_requests: 429, comment_required: 400, bad_amount: 400, currency_unavailable: 409, provider_rub_only: 409,
   page_unavailable: 410, origin_not_allowed: 403, shop_not_configured: 409, package_unavailable: 503, shop_unavailable: 410, empty_cart: 400, item_unavailable: 409, variant_required: 400, too_many_items: 429, too_many_media: 429, slug_taken: 409, provider_not_set: 409, provider_bad_url: 400, provider_unreachable: 502, provider_error: 502, provider_bad_answer: 502, forbidden: 403, user_not_found: 404, already_in_business: 409, too_many_staff: 429, too_many_promos: 429, code_taken: 409, promo_invalid: 400, promo_expired: 410, promo_exhausted: 409, promo_min_order: 400, order_not_done: 409, already_reviewed: 409, not_published: 409, not_skykassa_qr: 400, two_factor_required: 403, invalid_code: 403, archived: 409 };
 
 /** SkyKassa Business: /api/kbiz/* — кабинет владельца (вход обязателен), /api/kbiz/public/* — страница оплаты для покупателя (без входа). */
@@ -144,6 +144,7 @@ export const kbizRoutes = async (req, res) => {
     if (!rateLimit(`kbreq:${me}`, 10)) return json(res, 429, { error: 'too_many_requests' });
     return reply(await setRequisites(me, s.skyId, body));
   }
+  if (req.method === 'PUT' && path === '/api/kbiz/currencies') { if (!(await need('owner'))) return forbid(); return reply(await setCurrencies(me, body.currencies)); }
   if (req.method === 'POST' && path === '/api/kbiz/publish') { if (!(await need('owner'))) return forbid(); return reply(await publish(me, body.on !== false)); }
 
   if (req.method === 'GET' && path === '/api/kbiz/subscription') {

@@ -14,7 +14,7 @@ export const adminList = async ({ q = '', status = '' } = {}) => {
     `SELECT b.id, b.name, b.status, b.mode, b.legal_type, b.created_at, b.suspended_reason, p.username,
             (SELECT max(expires_at) FROM kb_subscriptions s WHERE s.business_id = b.id) AS sub_until,
             (SELECT count(*)::int FROM kb_payments x WHERE x.business_id = b.id AND x.status <> 'created') AS requests,
-            (SELECT COALESCE(SUM(amount_rub), 0)::bigint FROM kb_payments x WHERE x.business_id = b.id AND x.status = 'confirmed') AS confirmed_sum,
+            (SELECT COALESCE(SUM(amount_rub), 0)::bigint FROM kb_payments x WHERE x.business_id = b.id AND x.currency = 'RUB' AND x.status = 'confirmed') AS confirmed_sum,
             (SELECT count(*)::int FROM kb_staff t WHERE t.business_id = b.id AND t.status = 'active') AS staff,
             EXISTS (SELECT 1 FROM kb_providers v WHERE v.business_id = b.id AND v.enabled) AS has_provider
        FROM kb_businesses b JOIN profiles p ON p.id = b.owner_id WHERE ${w} ORDER BY b.created_at DESC LIMIT 100`, vals);

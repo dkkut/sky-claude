@@ -18,6 +18,9 @@ import { notifyGift } from './giftnotify.mjs';
 import { award } from './cashbackrules.mjs';
 import { newId, inTx, sealJson, openJson, clean } from './gocore.mjs';
 
+/** Валюты, которые организация может принимать прямым переводом. Курсов Sky не знает и между валютами не пересчитывает. */
+export const CURRENCIES = { RUB: '₽', USD: '$', EUR: '€', GBP: '£', CNY: '¥', KZT: '₸', TRY: '₺', BYN: 'Br', AED: 'AED' };
+export const fmtMoney = (n, cur = 'RUB') => `${n} ${CURRENCIES[cur] ?? cur}`;
 export const SUB_PRICE_RUB = Math.max(1, Number(process.env.KBIZ_SUB_PRICE_RUB) || 89);
 export const SUB_PERIOD_DAYS = 30;
 const EXPIRING_DAYS = 3;
@@ -101,9 +104,9 @@ export const buySub = async (profileId, idemKey) => {
 
 const shapeBusiness = (r) => ({
   id: r.id, name: r.name, description: r.description, category: r.category, country: r.country, mode: r.mode, legalType: r.legal_type, legalVerified: false,
-  contacts: r.contacts, website: r.website, hasLogo: Boolean(r.has_logo), status: r.status, suspendedReason: r.status === 'suspended' ? r.suspended_reason : undefined, createdAt: r.created_at.toISOString(),
+  contacts: r.contacts, website: r.website, currencies: r.currencies ?? ['RUB'], hasLogo: Boolean(r.has_logo), status: r.status, suspendedReason: r.status === 'suspended' ? r.suspended_reason : undefined, createdAt: r.created_at.toISOString(),
 });
-const BSEL = 'SELECT id, owner_id, name, description, category, country, mode, legal_type, contacts, website, (logo IS NOT NULL) AS has_logo, status, suspended_reason, created_at FROM kb_businesses';
+const BSEL = 'SELECT id, owner_id, name, description, category, country, mode, legal_type, contacts, website, currencies, (logo IS NOT NULL) AS has_logo, status, suspended_reason, created_at FROM kb_businesses';
 
 const parseBusiness = (b, partial = false) => {
   const v = {};
@@ -126,7 +129,9 @@ export const myBusiness = async (profileId) => {
   if (!rows[0]) return { business: null, subscription: { status: 'inactive', active: false, priceRub: SUB_PRICE_RUB, periodDays: SUB_PERIOD_DAYS } };
   const sub = await subState(rows[0].id);
   const { rows: rq } = await query('SELECT data_enc, updated_at FROM kb_requisites WHERE business_id = $1', [rows[0].id]);
-  return { business: shapeBusiness(rows[0]), subscription: sub, requisites: rq[0] ? { ...openJson(rq[0].data_enc), updatedAt: rq[0].updated_at.toISOString() } : null, payOrigin: payOrigin() };
+  const { rows: rc } = await query('SELECT currency, data_enc FROM kb_requisites_cur WHERE business_id = $1', [rows[0].id]);
+  const currencyRequisites = Object.fromEntries(rc.map((x) => [x.currency, openJson(x.data_enc)]));
+  return { business: shapeBusiness(rows[0]), subscription: sub, requisites: rq[0] ? { ...openJson(rq[0].data_enc), updatedAt: rq[0].updated_at.toISOString() } : null, currencyRequisites, payOrigin: payOrigin() };
 };
 
 export const MAX_ORGS = 5;
@@ -210,19 +215,55 @@ export const setRequisites = async (profileId, skyId, body) => {
   const { rows } = await query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!rows[0]) return err('no_business');
   if (rows[0].status === 'suspended') return err('suspended');
+  const cur = String(body?.currency ?? 'RUB').toUpperCase();
+  if (!Object.hasOwn(CURRENCIES, cur)) return err('bad_field', { field: 'currency' });
   const p = parseRequisites(body ?? {});
   if (p.error) return p;
   const tf = await verifySkyTwoFactor(skyId, body?.twoFactorCode);
   if (tf?.error) return err(tf.error === 'invalid_code' ? 'two_factor_required' : tf.error);
-  const { rows: old } = await query('SELECT data_enc FROM kb_requisites WHERE business_id = $1', [rows[0].id]);
+  const { rows: old } = cur === 'RUB'
+    ? await query('SELECT data_enc FROM kb_requisites WHERE business_id = $1', [rows[0].id])
+    : await query('SELECT data_enc FROM kb_requisites_cur WHERE business_id = $1 AND currency = $2', [rows[0].id, cur]);
   const prev = old[0] ? openJson(old[0].data_enc) : null;
   const changed = prev ? Object.keys(p.v).filter((k) => String(prev[k] ?? '') !== String(p.v[k] ?? '')) : Object.keys(p.v);
   if (prev && !changed.length) return { ok: true, unchanged: true };
-  await query(`INSERT INTO kb_requisites (business_id, data_enc, updated_by) VALUES ($1,$2,$3) ON CONFLICT (business_id) DO UPDATE SET data_enc = $2, updated_by = $3, updated_at = now()`,
+  if (cur === 'RUB') await query(`INSERT INTO kb_requisites (business_id, data_enc, updated_by) VALUES ($1,$2,$3) ON CONFLICT (business_id) DO UPDATE SET data_enc = $2, updated_by = $3, updated_at = now()`,
     [rows[0].id, sealJson(p.v), profileId]);
-  await audit(rows[0].id, profileId, prev ? 'requisites_changed' : 'requisites_set', changed.join(', '));
-  if (prev) await notifyGift(profileId, 'kassa_biz', 'SkyKassa Business: изменены реквизиты', 'Платежи по вашим QR-кодам теперь идут по новым реквизитам. Если это были не вы — смените пароль и завершите чужие сеансы.', `kbreq:${rows[0].id}:${Date.now()}`).catch(() => {});
+  else await query(`INSERT INTO kb_requisites_cur (business_id, currency, data_enc, updated_by) VALUES ($1,$2,$3,$4) ON CONFLICT (business_id, currency) DO UPDATE SET data_enc = $3, updated_by = $4, updated_at = now()`,
+    [rows[0].id, cur, sealJson(p.v), profileId]);
+  await audit(rows[0].id, profileId, prev ? 'requisites_changed' : 'requisites_set', `${cur !== 'RUB' ? `${cur}: ` : ''}${changed.join(', ')}`);
+  if (prev) await notifyGift(profileId, 'kassa_biz', 'SkyKassa Business: изменены реквизиты', 'Платежи по вашим QR-кодам теперь идут по новым реквизитам. Если это были не вы — смените пароль и завершите чужие сеансы.', `kbreq:${rows[0].id}:${cur}:${Date.now()}`).catch(() => {});
   return { ok: true, changed };
+};
+
+/** Реквизиты организации для валюты (рубли — основная таблица) или null. */
+export const requisitesFor = async (businessId, cur) => {
+  const { rows } = cur === 'RUB'
+    ? await query('SELECT data_enc FROM kb_requisites WHERE business_id = $1', [businessId])
+    : await query('SELECT data_enc FROM kb_requisites_cur WHERE business_id = $1 AND currency = $2', [businessId, cur]);
+  return rows[0] ? openJson(rows[0].data_enc) : null;
+};
+
+/** Валюты, которые покупатель реально может выбрать: отмечены владельцем И для них заданы реквизиты. */
+export const availableCurrencies = async (businessId) => {
+  const { rows } = await query('SELECT currencies FROM kb_businesses WHERE id = $1', [businessId]);
+  const accepted = rows[0]?.currencies ?? ['RUB'];
+  const { rows: a } = await query('SELECT 1 FROM kb_requisites WHERE business_id = $1', [businessId]);
+  const { rows: b } = await query('SELECT currency FROM kb_requisites_cur WHERE business_id = $1', [businessId]);
+  const have = new Set(b.map((x) => x.currency)); if (a[0]) have.add('RUB');
+  return accepted.filter((c) => have.has(c));
+};
+
+/** Какие валюты бизнес принимает (владелец). Хотя бы одна; реквизиты для каждой задаются отдельно. */
+export const setCurrencies = async (profileId, list) => {
+  const { rows } = await query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
+  if (!rows[0]) return err('no_business');
+  if (rows[0].status === 'suspended') return err('suspended');
+  const arr = Array.isArray(list) ? [...new Set(list.map((c) => String(c).toUpperCase()))] : null;
+  if (!arr || !arr.length || arr.length > Object.keys(CURRENCIES).length || !arr.every((c) => Object.hasOwn(CURRENCIES, c))) return err('bad_field', { field: 'currencies' });
+  await query('UPDATE kb_businesses SET currencies = $2, updated_at = now() WHERE id = $1', [rows[0].id, arr]);
+  await audit(rows[0].id, profileId, 'currencies_changed', arr.join(', '));
+  return { ok: true, currencies: arr };
 };
 
 /** Опубликовать: бизнес виден покупателям, когда заданы реквизиты (и действует подписка — проверяется отдельно при показе). */
@@ -231,8 +272,7 @@ export const publish = async (profileId, on) => {
   if (!rows[0]) return err('no_business');
   if (rows[0].status === 'suspended') return err('suspended');
   if (on) {
-    const { rows: rq } = await query('SELECT 1 FROM kb_requisites WHERE business_id = $1', [rows[0].id]);
-    if (!rq[0]) return err('requisites_required');
+    if (!(await availableCurrencies(rows[0].id)).length) return err('requisites_required');
   }
   await query('UPDATE kb_businesses SET status = $2, updated_at = now() WHERE id = $1', [rows[0].id, on ? 'active' : 'draft']);
   await audit(rows[0].id, profileId, on ? 'published' : 'unpublished');
@@ -266,7 +306,8 @@ const parseQr = (b, permanent) => {
   }
   let expires = null;
   if (b?.expiresAt) { expires = new Date(b.expiresAt); if (Number.isNaN(expires.getTime()) || expires <= new Date()) return err('bad_field', { field: 'expiresAt' }); }
-  return { v: { title, description: clean(b?.description, 300), amount, orderNo: clean(b?.orderNo, 40), instruction: clean(b?.instruction, 300), expires } };
+  const currency = String(b?.currency ?? 'RUB').toUpperCase(); if (!Object.hasOwn(CURRENCIES, currency)) return err('bad_field', { field: 'currency' });
+  return { v: { title, currency, description: clean(b?.description, 300), amount, orderNo: clean(b?.orderNo, 40), instruction: clean(b?.instruction, 300), expires } };
 };
 
 export const createQr = async (profileId, body, { permanent = false } = {}) => {
@@ -277,12 +318,13 @@ export const createQr = async (profileId, body, { permanent = false } = {}) => {
   if (!sub.active) return err('subscription_required', { expired: sub.status === 'expired' });
   const p = parseQr(permanent ? { title: body?.title || 'Оплата', instruction: body?.instruction } : body, permanent);
   if (p.error) return p;
+  if (!permanent && !(await availableCurrencies(b[0].id)).includes(p.v.currency)) return err('currency_unavailable');
   const { rows: cnt } = await query(`SELECT count(*)::int AS n FROM kb_qr WHERE business_id = $1 AND status <> 'archived' AND kind IN ('pay','permanent','tip') AND COALESCE(config->>'cash', '') <> 'true'`, [b[0].id]);
   if (cnt[0].n >= 500) return err('too_many_qr');
   const id = newId('kbq');
   try {
-    await query(`INSERT INTO kb_qr (id, public_id, business_id, kind, title, description, amount_rub, order_no, instruction, expires_at, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [id, publicId(), b[0].id, permanent ? 'permanent' : 'pay', p.v.title, p.v.description, p.v.amount, p.v.orderNo, p.v.instruction, p.v.expires, profileId]);
+    await query(`INSERT INTO kb_qr (id, public_id, business_id, kind, title, description, amount_rub, currency, order_no, instruction, expires_at, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [id, publicId(), b[0].id, permanent ? 'permanent' : 'pay', p.v.title, p.v.description, p.v.amount, permanent ? 'RUB' : p.v.currency, p.v.orderNo, p.v.instruction, p.v.expires, profileId]);
   } catch (e) { if (e.code === '23505') return err('already_exists'); throw e; }
   await audit(b[0].id, profileId, permanent ? 'permanent_qr_created' : 'qr_created', p.v.title);
   const { rows } = await query(`${QSEL} WHERE q.id = $1`, [id]);
@@ -330,15 +372,21 @@ export const publicPage = async (pid, ip) => {
   // Открытие считается один раз в сутки с одного адреса: накрутить счётчик одним клиентом нельзя.
   const h = ipHash(ip);
   if (h) await query('INSERT INTO kb_qr_opens (qr_id, day, ip_hash) VALUES ($1, current_date, $2) ON CONFLICT DO NOTHING', [q.id, h]).catch(() => {});
-  const { rows: rq } = await query('SELECT data_enc FROM kb_requisites WHERE business_id = $1', [q.biz_id]);
-  const r = rq[0] ? openJson(rq[0].data_enc) : null;
+  // Сумма вводится покупателем (постоянный QR, свободная сумма) — он выбирает валюту из тех, что принимает бизнес; иначе валюта страницы фиксирована.
+  const choosable = q.amount_rub == null && (q.kind === 'permanent' || q.kind === 'pay');
+  const avail = await availableCurrencies(q.biz_id);
+  const curs = choosable ? avail : avail.includes(q.currency) ? [q.currency] : [];
+  if (!curs.length) return { ...base, state: 'unavailable' };
+  const cur = curs.includes(q.currency) ? q.currency : curs[0];
+  const r = await requisitesFor(q.biz_id, cur);
   if (!r) return { ...base, state: 'unavailable' };
+  const byCur = choosable && curs.length > 1 ? Object.fromEntries(await Promise.all(curs.map(async (c) => { const x = await requisitesFor(q.biz_id, c); return [c, x ? { holder: x.holder, method: x.method, value: x.value, bank: x.bank || undefined, purpose: x.purpose || undefined, extra: x.extra || undefined } : null]; }))) : undefined;
   const cfg = q.config ?? {};
   const tip = q.kind === 'tip' ? { recipient: cfg.recipient, message: cfg.message, amounts: cfg.amounts, allowCustom: cfg.allowCustom !== false, photoUrl: cfg.mediaId ? `/api/kbiz/public/media/${cfg.mediaId}` : null } : undefined;
   const lines = (q.kind === 'invoice' || q.kind === 'order') && Array.isArray(cfg.lines) ? cfg.lines : undefined;
-  return { ...base, amountRub: q.amount_rub, currency: q.currency, orderNo: q.order_no || undefined, instruction: q.instruction || r.instruction || undefined,
+  return { ...base, amountRub: q.amount_rub, currency: cur, currencies: choosable && curs.length > 1 ? curs : undefined, requisitesByCurrency: byCur, orderNo: q.order_no || undefined, instruction: q.instruction || r.instruction || undefined,
     requisites: { holder: r.holder, method: r.method, value: r.value, bank: r.bank || undefined, purpose: r.purpose || undefined, extra: r.extra || undefined },
-    provider: await providerOn(q.biz_id) || undefined,
+    provider: (cur === 'RUB' && await providerOn(q.biz_id)) || undefined,
     tip, lines, number: cfg.number, discountRub: cfg.discountRub || undefined,
     minAmountRub: q.kind === 'tip' ? (cfg.min ?? 1) : 1, maxAmountRub: q.kind === 'tip' ? (cfg.max ?? MAX_AMOUNT) : MAX_AMOUNT, note: 'Это прямой перевод владельцу бизнеса. Sky не принимает деньги и не проверяет перевод: владелец сам подтверждает получение.' };
 };
@@ -350,6 +398,10 @@ export const reportPayment = async (pid, body, ip) => {
   const state = await pageState(q);
   if (state !== 'open') return err('page_unavailable', { state });
   let amount = q.amount_rub;                       // у фиксированного QR сумма — только с сервера
+  let cur = q.currency;                            // и валюта тоже; у свободной суммы покупатель выбирает из принимаемых бизнесом
+  const avail = await availableCurrencies(q.biz_id);
+  if (amount == null && (q.kind === 'permanent' || q.kind === 'pay') && body?.currency) cur = String(body.currency).toUpperCase();
+  if (!avail.includes(cur)) return err('currency_unavailable');
   if (amount == null) {
     amount = Number(body?.amountRub);
     const lo = q.kind === 'tip' ? Number(q.config?.min) || 1 : 1; const hi = q.kind === 'tip' ? Number(q.config?.max) || MAX_AMOUNT : MAX_AMOUNT;
@@ -368,20 +420,20 @@ export const reportPayment = async (pid, body, ip) => {
   const key = crypto.randomBytes(18).toString('base64url');
   await inTx(async (c) => {
     await c.query(`INSERT INTO kb_payments (id, business_id, qr_id, amount_rub, currency, order_no, status, buyer_note, buyer_key_hash, ip_hash, reported_at) VALUES ($1,$2,$3,$4,$5,$6,'reported',$7,$8,$9, now())`,
-      [id, q.biz_id, q.id, amount, q.currency, q.order_no || clean(body?.orderNo, 40), clean(body?.note, 300), keyHash(key), h]);
+      [id, q.biz_id, q.id, amount, cur, q.order_no || clean(body?.orderNo, 40), clean(body?.note, 300), keyHash(key), h]);
     await c.query(`INSERT INTO kb_payment_log (payment_id, actor, from_status, to_status, note) VALUES ($1,'buyer','created','reported','Покупатель сообщил о переводе')`, [id]);
   });
   const { rows: ow } = await query('SELECT owner_id FROM kb_businesses WHERE id = $1', [q.biz_id]);
-  if (ow[0]) await notifyGift(ow[0].owner_id, 'kassa_biz', 'Покупатель сообщил об оплате', `${amount} ₽ — «${q.title}». Проверьте поступление и подтвердите.`, `kbp:${id}`).catch(() => {});
+  if (ow[0]) await notifyGift(ow[0].owner_id, 'kassa_biz', 'Покупатель сообщил об оплате', `${fmtMoney(amount, cur)} — «${q.title}». Проверьте поступление и подтвердите.`, `kbp:${id}`).catch(() => {});
   return { ok: true, id, statusKey: key, status: 'reported', statusLabel: STATUS_LABEL.reported };
 };
 
 export const buyerStatus = async (id, key) => {
   const { rows: own } = await query(`SELECT 1 FROM kb_payments WHERE id = $1 AND buyer_key_hash = $2 AND source = 'provider' AND status IN ('created','reported')`, [String(id ?? ''), keyHash(key)]);
   if (own[0]) { const { refreshProviderPayment } = await import('./kbprovider.mjs'); await refreshProviderPayment(String(id)).catch(() => {}); }   // перепроверка у провайдера только по ключу покупателя
-  const { rows } = await query('SELECT p.status, p.source, p.amount_rub, b.name FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND p.buyer_key_hash = $2', [String(id ?? ''), keyHash(key)]);
+  const { rows } = await query('SELECT p.status, p.source, p.amount_rub, p.currency, b.name FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND p.buyer_key_hash = $2', [String(id ?? ''), keyHash(key)]);
   if (!rows[0]) return err('not_found');
-  return { status: rows[0].status, statusLabel: STATUS_LABEL[rows[0].status], amountRub: rows[0].amount_rub, business: rows[0].name,
+  return { status: rows[0].status, statusLabel: STATUS_LABEL[rows[0].status], amountRub: rows[0].amount_rub, currency: rows[0].currency, business: rows[0].name,
     note: rows[0].status === 'confirmed' ? (rows[0].source === 'provider' ? 'Оплату подтвердил платёжный партнёр.' : 'Владелец подтвердил получение перевода.') : 'Статус ставит владелец бизнеса после проверки поступления.' };
 };
 
@@ -413,7 +465,7 @@ export const actOnPayment = async (profileId, id, action, comment, actor = profi
   const t = TRANSITIONS[action];
   if (!t) return err('bad_action');
   return inTx(async (c) => {
-    const { rows } = await c.query('SELECT p.id, p.status, p.business_id, p.amount_rub FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND b.id = kb_cur_biz($2) FOR UPDATE OF p', [String(id ?? ''), profileId]);
+    const { rows } = await c.query('SELECT p.id, p.status, p.business_id, p.amount_rub, p.currency FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND b.id = kb_cur_biz($2) FOR UPDATE OF p', [String(id ?? ''), profileId]);
     if (!rows[0]) return err('not_found');
     if (rows[0].status === t.to) return { ok: true, duplicate: true, status: t.to };
     if (!t.from.includes(rows[0].status)) return err('bad_state', { status: rows[0].status });
@@ -422,7 +474,7 @@ export const actOnPayment = async (profileId, id, action, comment, actor = profi
     await c.query(`UPDATE kb_payments SET status = $2, owner_comment = CASE WHEN $3 = '' THEN owner_comment ELSE $3 END, updated_at = now(),
         confirmed_by = CASE WHEN $2 = 'confirmed' THEN $4 ELSE confirmed_by END, confirmed_at = CASE WHEN $2 = 'confirmed' THEN now() ELSE confirmed_at END WHERE id = $1`, [rows[0].id, t.to, note, actor]);
     await c.query('INSERT INTO kb_payment_log (payment_id, actor, from_status, to_status, note) VALUES ($1,$2,$3,$4,$5)', [rows[0].id, actor, rows[0].status, t.to, note]);
-    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, actor, `payment_${action}`, `${rows[0].id}: ${rows[0].amount_rub} ₽`]);
+    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, actor, `payment_${action}`, `${rows[0].id}: ${fmtMoney(rows[0].amount_rub, rows[0].currency)}`]);
     // Sky Parking: подтверждённая организацией оплата включает сессию парковки в этой же транзакции; отмена/возврат — отменяют/закрывают.
     if (t.to === 'confirmed' || t.to === 'cancelled' || t.to === 'refunded') {
       const pk = await import('./parkingpay.mjs');
@@ -446,8 +498,8 @@ const csvCell = (v) => { const s = String(v ?? ''); return /^[=+\-@\t\r]/.test(s
 /** Экспорт заявок — доступен и при истёкшей подписке (режим просмотра и выгрузки). Ячейки-формулы экранируются. */
 export const exportPaymentsCsv = async (profileId) => {
   const { payments } = await listPayments(profileId, { limit: 500 });
-  const head = ['Номер', 'Создана', 'Сумма ₽', 'Статус', 'Кто сообщил', 'QR', 'Номер заказа', 'Комментарий покупателя', 'Комментарий владельца'];
-  const lines = [head.join(',')].concat(payments.map((p) => [p.id, p.createdAt, p.amountRub, p.statusLabel, 'покупатель', p.qrTitle ?? '', p.orderNo, p.buyerNote, p.ownerComment].map((c) => `"${csvCell(c)}"`).join(',')));
+  const head = ['Номер', 'Создана', 'Сумма', 'Валюта', 'Статус', 'Кто сообщил', 'QR', 'Номер заказа', 'Комментарий покупателя', 'Комментарий владельца'];
+  const lines = [head.join(',')].concat(payments.map((p) => [p.id, p.createdAt, p.amountRub, p.currency, p.statusLabel, 'покупатель', p.qrTitle ?? '', p.orderNo, p.buyerNote, p.ownerComment].map((c) => `"${csvCell(c)}"`).join(',')));
   return `﻿${lines.join('\n')}\n`;
 };
 
@@ -459,13 +511,19 @@ export const overview = async (profileId) => {
     `SELECT count(*) FILTER (WHERE status <> 'created')::int AS requests,
             count(*) FILTER (WHERE status IN ('reported','pending_check'))::int AS awaiting,
             count(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
-            COALESCE(SUM(amount_rub) FILTER (WHERE status IN ('reported','pending_check','confirmed','not_found','refunded')), 0)::bigint AS claimed_sum,
-            COALESCE(SUM(amount_rub) FILTER (WHERE status = 'confirmed' AND source <> 'provider'), 0)::bigint AS confirmed_sum,
-            COALESCE(SUM(amount_rub) FILTER (WHERE status = 'confirmed' AND source = 'provider'), 0)::bigint AS confirmed_int_sum
+            COALESCE(SUM(amount_rub) FILTER (WHERE currency = 'RUB' AND status IN ('reported','pending_check','confirmed','not_found','refunded')), 0)::bigint AS claimed_sum,
+            COALESCE(SUM(amount_rub) FILTER (WHERE currency = 'RUB' AND status = 'confirmed' AND source <> 'provider'), 0)::bigint AS confirmed_sum,
+            COALESCE(SUM(amount_rub) FILTER (WHERE currency = 'RUB' AND status = 'confirmed' AND source = 'provider'), 0)::bigint AS confirmed_int_sum
        FROM kb_payments WHERE business_id = $1`, [b[0].id]);
+  // Деньги разных валют не складываются и не пересчитываются: сумма считается по каждой валюте отдельно.
+  const { rows: bc } = await query(
+    `SELECT currency, COALESCE(SUM(amount_rub) FILTER (WHERE status IN ('reported','pending_check','confirmed','not_found','refunded')), 0)::bigint AS claimed,
+            COALESCE(SUM(amount_rub) FILTER (WHERE status = 'confirmed'), 0)::bigint AS confirmed, count(*) FILTER (WHERE status = 'confirmed')::int AS n
+       FROM kb_payments WHERE business_id = $1 GROUP BY currency ORDER BY currency`, [b[0].id]);
   const { rows: q } = await query(`SELECT count(*)::int AS n, (SELECT count(*)::int FROM kb_qr_opens o JOIN kb_qr x ON x.id = o.qr_id WHERE x.business_id = $1) AS opens FROM kb_qr WHERE business_id = $1 AND status <> 'archived'`, [b[0].id]);
   return { stats: { qr: q[0].n, opens: q[0].opens, requests: rows[0].requests, awaiting: rows[0].awaiting, confirmed: rows[0].confirmed,
-    claimedSumRub: Number(rows[0].claimed_sum), confirmedByOwnerSumRub: Number(rows[0].confirmed_sum), confirmedByIntegrationSumRub: Number(rows[0].confirmed_int_sum) } };
+    claimedSumRub: Number(rows[0].claimed_sum), confirmedByOwnerSumRub: Number(rows[0].confirmed_sum), confirmedByIntegrationSumRub: Number(rows[0].confirmed_int_sum),
+    byCurrency: bc.map((x) => ({ currency: x.currency, claimed: Number(x.claimed), confirmed: Number(x.confirmed), confirmedCount: x.n })) } };
 };
 
 /* ─── Сканер QR в SkyMoney ─── */

@@ -137,18 +137,18 @@ export const analytics = async (ownerId, days = 30) => {
   const v = [b.id, d];
   const { rows: tot } = await query(
     `SELECT count(*) FILTER (WHERE p.status <> 'created')::int AS requests, count(*) FILTER (WHERE p.status = 'confirmed')::int AS confirmed,
-            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status IN ('reported','pending_check','confirmed','not_found','refunded')), 0)::bigint AS claimed,
-            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status = 'confirmed'), 0)::bigint AS confirmed_sum,
+            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.currency = 'RUB' AND p.status IN ('reported','pending_check','confirmed','not_found','refunded')), 0)::bigint AS claimed,
+            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.currency = 'RUB' AND p.status = 'confirmed'), 0)::bigint AS confirmed_sum,
             count(*) FILTER (WHERE p.status = 'not_found')::int AS not_found, count(*) FILTER (WHERE p.status = 'refunded')::int AS refunded
        FROM kb_payments p WHERE p.business_id = $1 AND p.created_at > now() - ($2::int * interval '1 day')`, v);
   const { rows: opens } = await query(`SELECT count(*)::int AS n FROM kb_qr_opens o JOIN kb_qr q ON q.id = o.qr_id WHERE q.business_id = $1 AND o.day > current_date - $2::int`, v);
   const { rows: byDay } = await query(
     `SELECT to_char(date_trunc('day', p.created_at), 'YYYY-MM-DD') AS day, count(*) FILTER (WHERE p.status <> 'created')::int AS requests,
-            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status = 'confirmed'), 0)::bigint AS confirmed_sum
+            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.currency = 'RUB' AND p.status = 'confirmed'), 0)::bigint AS confirmed_sum
        FROM kb_payments p WHERE p.business_id = $1 AND p.created_at > now() - ($2::int * interval '1 day') GROUP BY 1 ORDER BY 1`, v);
   const { rows: byKind } = await query(
     `SELECT CASE WHEN q.config->>'cash' = 'true' THEN 'cash' ELSE COALESCE(q.kind, 'pay') END AS kind, count(*) FILTER (WHERE p.status <> 'created')::int AS requests,
-            count(*) FILTER (WHERE p.status = 'confirmed')::int AS confirmed, COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status = 'confirmed'), 0)::bigint AS confirmed_sum
+            count(*) FILTER (WHERE p.status = 'confirmed')::int AS confirmed, COALESCE(SUM(p.amount_rub) FILTER (WHERE p.currency = 'RUB' AND p.status = 'confirmed'), 0)::bigint AS confirmed_sum
        FROM kb_payments p LEFT JOIN kb_qr q ON q.id = p.qr_id WHERE p.business_id = $1 AND p.created_at > now() - ($2::int * interval '1 day') GROUP BY 1 ORDER BY 4 DESC`, v);
   const { rows: top } = await query(
     `SELECT l->>'title' AS title, SUM((l->>'qty')::int)::int AS qty, SUM((l->>'qty')::int * (l->>'priceRub')::int)::bigint AS sum
@@ -159,9 +159,14 @@ export const analytics = async (ownerId, days = 30) => {
   const { rows: ord } = await query(
     `SELECT count(*)::int AS n, count(*) FILTER (WHERE status = 'done')::int AS done, count(*) FILTER (WHERE status IN ('rejected','cancelled'))::int AS lost, COALESCE(SUM(discount_rub), 0)::bigint AS discounts
        FROM kb_orders WHERE business_id = $1 AND created_at > now() - ($2::int * interval '1 day')`, v);
+  const { rows: bcur } = await query(
+    `SELECT p.currency, count(*) FILTER (WHERE p.status = 'confirmed')::int AS confirmed, COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status = 'confirmed'), 0)::bigint AS confirmed_sum,
+            COALESCE(SUM(p.amount_rub) FILTER (WHERE p.status IN ('reported','pending_check','confirmed','not_found','refunded')), 0)::bigint AS claimed
+       FROM kb_payments p WHERE p.business_id = $1 AND p.created_at > now() - ($2::int * interval '1 day') GROUP BY 1 ORDER BY 1`, v);
   const { rows: rev } = await query(`SELECT count(*)::int AS n, COALESCE(round(avg(rating)::numeric, 2), 0)::float AS avg FROM kb_reviews WHERE business_id = $1 AND status = 'published'`, [b.id]);
   const t = tot[0];
   return { analytics: { days: d, requests: t.requests, confirmed: t.confirmed, claimedSumRub: Number(t.claimed), confirmedSumRub: Number(t.confirmed_sum), averageRub: t.confirmed ? Math.round(Number(t.confirmed_sum) / t.confirmed) : 0,
+    byCurrency: bcur.map((x) => ({ currency: x.currency, confirmed: x.confirmed, confirmedSum: Number(x.confirmed_sum), claimedSum: Number(x.claimed) })),
     notFound: t.not_found, refunded: t.refunded, opens: opens[0].n,
     conversionPercent: opens[0].n ? Math.round((t.confirmed / opens[0].n) * 1000) / 10 : null,
     byDay: byDay.map((x) => ({ day: x.day, requests: x.requests, confirmedSumRub: Number(x.confirmed_sum) })),

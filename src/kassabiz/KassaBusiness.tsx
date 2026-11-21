@@ -110,6 +110,13 @@ const Overview = ({ me, go }: { me: K.Me; go: (s: Sec) => void }) => {
               <Stat k="Подтверждено владельцем" v={`${st.confirmedByOwnerSumRub} ₽`} sub={`${st.confirmed} заявок · подтверждение владельца`} />
               <Stat k="Подтверждено интеграцией" v={`${st.confirmedByIntegrationSumRub} ₽`} sub="платёжные партнёры пока не подключены" />
             </div>
+            {(st.byCurrency ?? []).some((x) => x.currency !== 'RUB') && (
+              <div className="mt-3">
+                <p className="text-xs font-bold mb-1" style={{ color: 'var(--t2)' }}>По валютам</p>
+                {(st.byCurrency ?? []).map((x) => <p key={x.currency} className="flex justify-between gap-2 text-xs py-1" style={{ color: 'var(--t2)', borderBottom: '1px solid var(--border)' }}><span>{x.currency} · подтверждено {x.confirmedCount}</span><span>{K.money(x.confirmed, x.currency)} из заявленных {K.money(x.claimed, x.currency)}</span></p>)}
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--t3)' }}>Суммы в разных валютах не складываются и не пересчитываются: Sky курсов не использует.</p>
+              </div>
+            )}
             <p className="mt-2 text-[11px]" style={{ color: 'var(--t3)' }}>Это учёт заявок, а не банковская выписка: Sky поступление денег не проверяет.</p>
           </div>
         </>
@@ -129,7 +136,7 @@ const Payments = () => {
   const act = async (p: K.Payment, action: string, needComment = false) => {
     let comment = '';
     if (needComment) { comment = window.prompt('Комментарий (обязательно):') ?? ''; if (comment.trim().length < 3) return; }
-    else if (action === 'confirm' && !window.confirm(`Подтвердить, что вы получили ${p.amountRub} ₽ на свои реквизиты? Sky поступление не проверяет — это ваше подтверждение.`)) return;
+    else if (action === 'confirm' && !window.confirm(`Подтвердить, что вы получили ${K.money(p.amountRub, p.currency)} на свои реквизиты? Sky поступление не проверяет — это ваше подтверждение.`)) return;
     const r = await K.kbPaymentAct(p.id, action, comment); if (!r.ok) flash(why(r)); await load();
   };
   const show = async (id: string) => { if (open === id) { setOpen(null); return; } setOpen(id); setLog(await K.kbPaymentLog(id)); };
@@ -139,7 +146,7 @@ const Payments = () => {
       {!list ? <Loader2 className="animate-spin" size={16} /> : !list.length ? <p className="text-sm" style={{ color: 'var(--t3)' }}>Заявок пока нет. Они появятся, когда покупатель нажмёт «Я перевёл деньги» на странице оплаты.</p> : list.map((p) => (
         <div key={p.id} className="rounded-2xl p-3" style={card}>
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0"><p className="text-base font-black" style={{ color: 'var(--t1)' }}>{p.amountRub} ₽</p><p translate="no" className="text-[11px] truncate" style={{ color: 'var(--t3)' }}>{p.qrTitle ?? 'Без QR'}{p.orderNo ? ` · № ${p.orderNo}` : ''} · {dt(p.reportedAt ?? p.createdAt)}</p></div>
+            <div className="min-w-0"><p className="text-base font-black" style={{ color: 'var(--t1)' }}>{K.money(p.amountRub, p.currency)}</p><p translate="no" className="text-[11px] truncate" style={{ color: 'var(--t3)' }}>{p.qrTitle ?? 'Без QR'}{p.orderNo ? ` · № ${p.orderNo}` : ''} · {dt(p.reportedAt ?? p.createdAt)}</p></div>
             <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold" style={{ background: 'var(--bg-l3)', color: p.status === 'confirmed' ? 'var(--green)' : 'var(--t2)' }}>{p.statusLabel}</span>
           </div>
           {p.buyerNote && <p translate="no" className="mt-1 text-xs" style={{ color: 'var(--t2)' }}>«{p.buyerNote}»</p>}
@@ -169,7 +176,7 @@ const QrView = ({ q, mode, onChange, bizName }: { q: K.Qr; mode: K.Mode; onChang
       <div className="shrink-0 rounded-lg overflow-hidden self-start" style={{ width: 112, height: 112 }} dangerouslySetInnerHTML={{ __html: svg.replace(/width="\d+" height="\d+"/, 'width="112" height="112"') }} />
       <div className="min-w-0 flex-1">
         <p translate="no" className="text-sm font-bold truncate" style={{ color: 'var(--t1)' }}>{q.title}{q.kind === 'permanent' ? ' · постоянный' : ''}</p>
-        <p className="text-xs" style={{ color: 'var(--t3)' }}>{q.amountRub != null ? `${q.amountRub} ₽` : 'Сумму вводит покупатель'}{q.expiresAt ? ` · до ${dt(q.expiresAt)}` : ''} · {q.status === 'active' ? 'включён' : q.status === 'disabled' ? 'отключён' : 'в архиве'}</p>
+        <p className="text-xs" style={{ color: 'var(--t3)' }}>{q.amountRub != null ? K.money(q.amountRub, q.currency) : 'Сумму вводит покупатель'}{q.expiresAt ? ` · до ${dt(q.expiresAt)}` : ''} · {q.status === 'active' ? 'включён' : q.status === 'disabled' ? 'отключён' : 'в архиве'}</p>
         <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Открытий: {q.opens} · заявок: {q.requests} · подтверждено: {q.confirmed}</p>
         <p translate="no" className="mt-1 text-[11px] break-all" style={{ color: 'var(--t3)' }}>{q.url}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -187,13 +194,13 @@ const QrView = ({ q, mode, onChange, bizName }: { q: K.Qr; mode: K.Mode; onChang
 };
 const Qrs = ({ me }: { me: K.Me }) => {
   const [list, setList] = useState<K.Qr[] | null>(null); const [form, setForm] = useState(false);
-  const [f, setF] = useState({ title: '', amountRub: '', orderNo: '', description: '', instruction: '', expiresAt: '' });
+  const [f, setF] = useState({ title: '', amountRub: '', currency: 'RUB', orderNo: '', description: '', instruction: '', expiresAt: '' });
   const load = useCallback(async () => { const r = await K.kbQrList(); if (r.ok) setList(r.data.qr); }, []);
   useEffect(() => { void load(); }, [load]);
   const mode = me.business?.mode ?? 'both'; const hasPerm = list?.some((q) => q.kind === 'permanent' && q.status !== 'archived');
   const create = async () => {
     const r = await K.kbQrCreate({ ...f, amountRub: f.amountRub || undefined, expiresAt: f.expiresAt ? new Date(f.expiresAt).toISOString() : undefined });
-    if (!r.ok) { flash(why(r)); return; } setForm(false); setF({ title: '', amountRub: '', orderNo: '', description: '', instruction: '', expiresAt: '' }); await load();
+    if (!r.ok) { flash(why(r)); return; } setForm(false); setF({ title: '', amountRub: '', currency: f.currency, orderNo: '', description: '', instruction: '', expiresAt: '' }); await load();
   };
   const perm = async () => { const r = await K.kbQrPermanent({ title: 'Оплата' }); if (!r.ok) flash(why(r)); await load(); };
   const needSub = !me.subscription.active;
@@ -207,8 +214,13 @@ const Qrs = ({ me }: { me: K.Me }) => {
       {form && (
         <div className="rounded-2xl p-3 space-y-2" style={card}>
           <In label="Название платежа" value={f.title} onChange={(v) => setF({ ...f, title: v })} max={80} />
-          <div className="grid gap-2 sm:grid-cols-3">
-            <In label="Сумма, ₽ (пусто — вводит покупатель)" value={f.amountRub} onChange={(v) => setF({ ...f, amountRub: v.replace(/\D/g, '') })} max={7} />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block text-[11px]" style={{ color: 'var(--t3)' }}>Валюта
+              <select value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} className="mt-0.5 block w-full rounded-lg px-3 py-2 text-sm" style={field}>
+                {(me.business?.currencies ?? ['RUB']).map((c) => <option key={c} value={c}>{c} — {K.CURRENCY_NAMES[c] ?? c}</option>)}
+              </select>
+            </label>
+            <In label={`Сумма, ${K.CURRENCIES[f.currency] ?? f.currency} (пусто — вводит покупатель)`} value={f.amountRub} onChange={(v) => setF({ ...f, amountRub: v.replace(/\D/g, '') })} max={7} />
             <In label="Номер заказа" value={f.orderNo} onChange={(v) => setF({ ...f, orderNo: v })} max={40} />
             <In label="Действует до" type="datetime-local" value={f.expiresAt} onChange={(v) => setF({ ...f, expiresAt: v })} />
           </div>
@@ -224,19 +236,46 @@ const Qrs = ({ me }: { me: K.Me }) => {
 
 /* ── Реквизиты и публикация ── */
 const Reqs = ({ me, reload }: { me: K.Me; reload: () => void }) => {
-  const r0 = me.requisites;
+  const accepted = me.business?.currencies ?? ['RUB'];
+  const [cur, setCur] = useState(accepted[0] ?? 'RUB');
+  const [busyC, setBusyC] = useState(false);
+  const toggle = async (c: string) => {
+    const next = accepted.includes(c) ? accepted.filter((x) => x !== c) : [...accepted, c];
+    if (!next.length) { flash('Нужна хотя бы одна валюта'); return; }
+    setBusyC(true); const r = await K.kbSetCurrencies(next); setBusyC(false);
+    if (!r.ok) { flash(why(r)); return; }
+    if (!next.includes(cur)) setCur(next[0]); reload();
+  };
+  const hasReq = Boolean(me.requisites) || Object.keys(me.currencyRequisites ?? {}).length > 0;
+  const missing = accepted.filter((c) => c === 'RUB' ? !me.requisites : !me.currencyRequisites?.[c]);
+  const r0 = cur === 'RUB' ? me.requisites : me.currencyRequisites?.[cur];
   const [f, setF] = useState({ holder: r0?.holder ?? '', method: r0?.method ?? 'phone', value: r0?.value ?? '', bank: r0?.bank ?? '', extra: r0?.extra ?? '', purpose: r0?.purpose ?? '', instruction: r0?.instruction ?? '', twoFactorCode: '' });
+  useEffect(() => { setF({ holder: r0?.holder ?? '', method: r0?.method ?? 'phone', value: r0?.value ?? '', bank: r0?.bank ?? '', extra: r0?.extra ?? '', purpose: r0?.purpose ?? '', instruction: r0?.instruction ?? '', twoFactorCode: '' }); }, [cur]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const save = async () => {
-    setBusy(true); const r = await K.kbSetRequisites(f); setBusy(false);
+    setBusy(true); const r = await K.kbSetRequisites({ ...f, currency: cur }); setBusy(false);
     if (!r.ok) { flash(why(r)); return; }
     flash('Реквизиты сохранены'); setF({ ...f, twoFactorCode: '' }); reload();
   };
   const pub = async (on: boolean) => { const r = await K.kbPublish(on); if (!r.ok) flash(why(r)); reload(); };
   return (
     <div className="space-y-3">
+      <div className="rounded-2xl p-4 space-y-2" style={card}>
+        <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Принимаемые валюты</p>
+        <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Отметьте валюты, в которых вы готовы получать переводы, и укажите реквизиты для каждой. Sky не принимает деньги, не меняет валюты и не использует курсы: покупатель переводит именно ту валюту, которую выбрал, на ваши реквизиты. Покупателю показываются только валюты с заполненными реквизитами.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {Object.keys(K.CURRENCIES).map((c) => <button key={c} type="button" disabled={busyC} aria-pressed={accepted.includes(c)} title={K.CURRENCY_NAMES[c]} onClick={() => void toggle(c)} className="rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+            style={{ background: accepted.includes(c) ? 'var(--accent)' : 'var(--bg-l2)', color: accepted.includes(c) ? '#fff' : 'var(--t1)', border: '1px solid var(--border)' }}>{c}</button>)}
+        </div>
+        {missing.length > 0 && <p className="text-[11px]" style={{ color: 'var(--amber)' }}>{`Нет реквизитов для: ${missing.join(', ')} — эти валюты покупателям пока не показываются.`}</p>}
+      </div>
       <div className="rounded-2xl p-4 space-y-3" style={card}>
         <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Реквизиты для прямых переводов</p>
+        <label className="block text-[11px]" style={{ color: 'var(--t3)' }}>Валюта реквизитов
+          <select value={cur} onChange={(e) => setCur(e.target.value)} className="mt-0.5 block w-full rounded-lg px-3 py-2 text-sm" style={field}>
+            {accepted.map((c) => <option key={c} value={c}>{c} — {K.CURRENCY_NAMES[c] ?? c}</option>)}
+          </select>
+        </label>
         <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Покупатель переводит деньги вам напрямую. Не указывайте и не просите PIN-код, CVV/CVC, пароли интернет-банка и коды из SMS — здесь они не нужны. Реквизиты хранятся зашифрованными, смена записывается в журнал.</p>
         <In label="Имя получателя" value={f.holder} onChange={(v) => setF({ ...f, holder: v })} />
         <label className="block text-[11px]" style={{ color: 'var(--t3)' }}>Способ
@@ -256,7 +295,7 @@ const Reqs = ({ me, reload }: { me: K.Me; reload: () => void }) => {
       <div className="rounded-2xl p-4" style={card}>
         <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Публикация</p>
         <p className="text-xs mb-2" style={{ color: 'var(--t3)' }}>{me.business?.status === 'active' ? 'Бизнес опубликован: страницы оплаты открываются у покупателей (при действующей подписке).' : 'Пока бизнес скрыт: страницы оплаты не открываются.'}</p>
-        {me.business?.status === 'active' ? <Btn small onClick={() => void pub(false)}>Скрыть бизнес</Btn> : <Btn small tone="accent" onClick={() => void pub(true)} disabled={!me.requisites}>Опубликовать</Btn>}
+        {me.business?.status === 'active' ? <Btn small onClick={() => void pub(false)}>Скрыть бизнес</Btn> : <Btn small tone="accent" onClick={() => void pub(true)} disabled={!hasReq}>Опубликовать</Btn>}
       </div>
     </div>
   );

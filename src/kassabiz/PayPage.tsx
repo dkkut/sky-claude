@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Copy, Check, Loader2, ShieldCheck, AlertTriangle, Store } from 'lucide-react';
 import { uploadUrl } from '@/core/auth/api';
-import { pubPage, pubReport, pubProviderPay, pubStatus, type PublicPage } from './api';
+import { pubPage, pubReport, pubProviderPay, pubStatus, CURRENCIES, CURRENCY_NAMES, type PublicPage } from './api';
 
 const METHOD: Record<string, string> = { phone: 'Номер телефона (СБП)', account: 'Номер счёта', card: 'Номер карты', other: 'Реквизиты' };
 const STATE_TEXT: Record<string, string> = {
@@ -14,7 +14,7 @@ const STATE_TEXT: Record<string, string> = {
   unavailable: 'Эта страница оплаты сейчас недоступна.',
 };
 const ERR: Record<string, string> = {
-  bad_amount: 'Укажите сумму — целое число рублей от 1 до 1 000 000.', too_many_requests: 'Слишком много заявок. Попробуйте позже.',
+  bad_amount: 'Укажите сумму — целое число от 1 до 1 000 000.', currency_unavailable: 'Эта валюта сейчас не принимается. Выберите другую.', provider_rub_only: 'Оплата у партнёра доступна только в рублях.', too_many_requests: 'Слишком много заявок. Попробуйте позже.',
   page_unavailable: 'Страница оплаты больше не принимает заявки.', provider_unreachable: 'Платёжный партнёр сейчас недоступен. Оплатите переводом по реквизитам.', provider_error: 'Платёжный партнёр сейчас недоступен. Оплатите переводом по реквизитам.', provider_bad_answer: 'Платёжный партнёр ответил некорректно. Оплатите переводом по реквизитам.', provider_not_set: 'Оплата у партнёра недоступна.', network: 'Нет связи. Проверьте интернет и повторите.', not_found: 'Страница не найдена.',
 };
 const saved = (pid: string): { id: string; key: string } | null => { try { return JSON.parse(localStorage.getItem(`kbiz:pay:${pid}`) ?? 'null'); } catch { return null; } };
@@ -46,6 +46,7 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
   const [note, setNote] = useState('');
   const [trap, setTrap] = useState('');
   const [busy, setBusy] = useState(false);
+  const [chosen, setChosen] = useState<string | null>(null);
   const [req, setReq] = useState<{ id: string; key: string; label: string } | null>(null);
 
   const refreshStatus = useCallback(async (r: { id: string; key: string }) => {
@@ -63,8 +64,8 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
   const report = async () => {
     if (!page) return;
     setBusy(true); setErr('');
-    const body: { amountRub?: number; note?: string; website?: string } = { note, website: trap };
-    if (page.amountRub == null) body.amountRub = Number(amount);
+    const body: { amountRub?: number; currency?: string; note?: string; website?: string } = { note, website: trap };
+    if (page.amountRub == null) { body.amountRub = Number(amount); if (page.currencies) body.currency = chosen && page.currencies.includes(chosen) ? chosen : page.currency; }
     const r = await pubReport(pid, body);
     setBusy(false);
     if (!r.ok) { setErr(ERR[r.error] ?? 'Не удалось отправить заявку.'); return; }
@@ -103,9 +104,11 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
 
   if (page.state !== 'open') return wrap(<>{head}<div className="rounded-2xl p-4 text-sm" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t2)' }}><AlertTriangle size={16} className="mb-2" style={{ color: 'var(--amber)' }} />{STATE_TEXT[page.state] ?? STATE_TEXT.unavailable}</div></>);
 
-  const r = page.requisites!;
+  const cur = page.currencies ? (chosen && page.currencies.includes(chosen) ? chosen : page.currency ?? page.currencies[0]) : page.currency ?? 'RUB';
+  const sym = CURRENCIES[cur] ?? cur;
+  const r = (page.currencies && page.requisitesByCurrency?.[cur]) || page.requisites!;
   const fixed = page.amountRub != null;
-  const sum = fixed ? `${page.amountRub} ₽` : amount ? `${amount} ₽` : '—';
+  const sum = fixed ? `${page.amountRub} ${sym}` : amount ? `${amount} ${sym}` : '—';
   return wrap(
     <>
       {head}
@@ -116,18 +119,27 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
         {page.tip && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {page.tip.amounts.map((a) => <button key={a} type="button" onClick={() => setAmount(String(a))} aria-pressed={amount === String(a)} className="rounded-full px-3 py-2 text-sm font-semibold"
-              style={{ background: amount === String(a) ? 'var(--accent)' : 'var(--bg-l2)', color: amount === String(a) ? '#fff' : 'var(--t1)', border: '1px solid var(--border)' }}>{a} ₽</button>)}
+              style={{ background: amount === String(a) ? 'var(--accent)' : 'var(--bg-l2)', color: amount === String(a) ? '#fff' : 'var(--t1)', border: '1px solid var(--border)' }}>{a} {sym}</button>)}
           </div>
         )}
         {page.description && <p translate="no" className="text-xs mt-0.5" style={{ color: 'var(--t3)' }}>{page.description}</p>}
+        {page.currencies && (
+          <div className="mt-3" role="radiogroup" aria-label="Валюта оплаты">
+            <p className="text-[11px] mb-1" style={{ color: 'var(--t3)' }}>Валюта оплаты</p>
+            <div className="flex flex-wrap gap-1.5">
+              {page.currencies.map((c) => <button key={c} type="button" role="radio" aria-checked={cur === c} title={CURRENCY_NAMES[c] ?? c} onClick={() => setChosen(c)} className="rounded-full px-3 py-2 text-sm font-semibold"
+                style={{ background: cur === c ? 'var(--accent)' : 'var(--bg-l2)', color: cur === c ? '#fff' : 'var(--t1)', border: '1px solid var(--border)' }}>{c} {CURRENCIES[c] !== c ? CURRENCIES[c] : ''}</button>)}
+            </div>
+          </div>
+        )}
         <div className="mt-3 flex items-end justify-between gap-3">
           <div>
             <p className="text-[11px]" style={{ color: 'var(--t3)' }}>К оплате</p>
-            {fixed ? <p className="text-3xl font-black" translate="no" style={{ color: 'var(--t1)' }}>{page.amountRub} ₽</p> : page.tip && !page.tip.allowCustom ? <p className="text-3xl font-black" translate="no" style={{ color: 'var(--t1)' }}>{amount ? `${amount} ₽` : 'Выберите сумму'}</p> : (
+            {fixed ? <p className="text-3xl font-black" translate="no" style={{ color: 'var(--t1)' }}>{page.amountRub} {sym}</p> : page.tip && !page.tip.allowCustom ? <p className="text-3xl font-black" translate="no" style={{ color: 'var(--t1)' }}>{amount ? `${amount} ${sym}` : 'Выберите сумму'}</p> : (
               <label className="flex items-baseline gap-1">
-                <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, '').slice(0, 7))} placeholder="Сумма" aria-label="Сумма, рублей"
+                <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, '').slice(0, 7))} placeholder="Сумма" aria-label="Сумма"
                   className="w-32 rounded-lg px-2 py-1.5 text-2xl font-black outline-none" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }} />
-                <span className="text-xl font-black">₽</span>
+                <span className="text-xl font-black">{sym}</span>
               </label>
             )}
           </div>
@@ -136,8 +148,8 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
         {page.orderNo && <p className="mt-2 text-xs" style={{ color: 'var(--t3)' }}>{page.kind === 'invoice' ? 'Счёт' : 'Заказ'} № <span translate="no">{page.orderNo}</span></p>}
         {page.lines && page.lines.length > 0 && (
           <ul className="mt-3 text-xs" style={{ color: 'var(--t2)' }}>
-            {page.lines.map((l, i) => <li key={i} translate="no" className="flex justify-between gap-2 py-0.5"><span>{l.title}{l.variant ? ` (${l.variant})` : ''} × {l.qty}</span><span>{l.qty * l.priceRub - (l.discountRub ?? 0)} ₽</span></li>)}
-            {page.discountRub ? <li className="flex justify-between gap-2 py-0.5 font-semibold" style={{ color: 'var(--green)' }}><span>Скидка по промокоду</span><span>−{page.discountRub} ₽</span></li> : null}
+            {page.lines.map((l, i) => <li key={i} translate="no" className="flex justify-between gap-2 py-0.5"><span>{l.title}{l.variant ? ` (${l.variant})` : ''} × {l.qty}</span><span>{l.qty * l.priceRub - (l.discountRub ?? 0)} {sym}</span></li>)}
+            {page.discountRub ? <li className="flex justify-between gap-2 py-0.5 font-semibold" style={{ color: 'var(--green)' }}><span>Скидка по промокоду</span><span>−{page.discountRub} {sym}</span></li> : null}
           </ul>
         )}
       </div>
@@ -166,7 +178,7 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
             className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }} />
           <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
           {err && <p role="alert" className="mt-2 text-xs" style={{ color: 'var(--red)' }}>{err}</p>}
-          {page.provider && (
+          {page.provider && cur === 'RUB' && (
             <button type="button" disabled={busy || (!fixed && !amount)} onClick={() => void payAtPartner()} className="mt-3 w-full rounded-xl py-3 text-sm font-black disabled:opacity-50" style={{ background: 'var(--bg-l2)', border: '1px solid var(--accent)', color: 'var(--t1)' }}>
               Оплатить у платёжного партнёра бизнеса
             </button>
