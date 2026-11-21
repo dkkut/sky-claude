@@ -62,10 +62,11 @@ export const skyPetsRoutes = async (req, res) => {
     if (method === 'POST' && rest === '/daily') return reply(await core.daily(me));
     if (method === 'POST' && rest === '/settings') return reply(await core.settings(me, await body()));
     if (method === 'GET' && (m = rest.match(new RegExp(`^/pet/(${PID})$`)))) return reply(await core.petView(me, m[1]));
-    if (method === 'POST' && (m = rest.match(new RegExp(`^/pet/(${PID})/(act|rename|favorite|room|skin|equip|unequip|evolve|transfer)$`)))) {
+    if (method === 'POST' && (m = rest.match(new RegExp(`^/pet/(${PID})/(act|rename|favorite|room|skin|equip|unequip|evolve|transfer|streak-seen)$`)))) {
       b = await body(); const id = m[1];
       switch (m[2]) {
         case 'act': return reply(await core.act(me, id, String(b.action), b));
+        case 'streak-seen': return reply(await core.streakSeen(me, id, b.milestone));
         case 'rename': return reply(await core.rename(me, id, b.name));
         case 'favorite': return reply(await core.setFavorite(me, id, b.on));
         case 'room': return reply(await core.moveRoom(me, id, String(b.room)));

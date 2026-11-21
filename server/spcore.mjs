@@ -213,6 +213,46 @@ const eventTick = async (c, pid, xp) => {
 
 // ───────────────────────────── ДЕЙСТВИЯ над питомцем ─────────────────────────────
 const CARE = ['feed', 'play', 'bathe', 'sleep', 'heal', 'walk', 'teach', 'photo'];
+// ───────────────────────────── серия ухода ─────────────────────────────
+// Серия = дни подряд, когда о питомце позаботился хотя бы один хозяин. Сегодняшний день ещё можно успеть: серия жива, если
+// последний день ухода — сегодня или вчера. Вехи и награды (монеты каждому хозяину) — раз и навсегда.
+export const STREAK_MILESTONES = [10, 30, 100, 200, 300, 400, 500];
+const STREAK_REWARD = { 10: 50, 30: 150, 100: 500, 200: 1000, 300: 1500, 400: 2000, 500: 3000 };
+const streakCalc = (days) => {
+  const set = new Set(days); const fmt = (d) => d.toISOString().slice(0, 10); const day = 86400000;
+  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+  let cur = 0; let t = set.has(fmt(today)) ? today.getTime() : today.getTime() - day;
+  while (set.has(fmt(new Date(t)))) { cur++; t -= day; }
+  const sorted = [...set].sort(); let best = 0, run = 0, prev = null;
+  for (const d of sorted) { const ms = Date.parse(d); run = prev !== null && ms - prev === day ? run + 1 : 1; prev = ms; if (run > best) best = run; }
+  return { current: cur, best, doneToday: set.has(fmt(today)) };
+};
+const careDays = async (q, petId) => (await q(`SELECT DISTINCT to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS d FROM sp_history WHERE pet_id=$1 AND actor_id IS NOT NULL AND action = ANY($2::text[]) ORDER BY d DESC LIMIT 700`, [petId, CARE])).rows.map((r) => r.d);
+/** Записывает новые вехи (под транзакцией питомца) и награждает хозяев. Возвращает список только что достигнутых. */
+const streakSweep = async (c, pet, owners) => {
+  const st = streakCalc(await careDays((a, b) => c.query(a, b), pet.id)); const fresh = [];
+  for (const m of STREAK_MILESTONES) {
+    if (st.best < m && st.current < m) break;
+    const r = await c.query('INSERT INTO sp_streak_marks (pet_id, milestone) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING 1', [pet.id, m]);
+    if (r.rowCount) { fresh.push(m); for (const o of owners) await grant(c, o, { coins: STREAK_REWARD[m] }, 'streak'); }
+  }
+  return { st, fresh };
+};
+export const streakOf = async (me, petId) => {
+  const st = streakCalc(await careDays((a, b) => query(a, b), petId));
+  const marks = (await query('SELECT milestone, reached_at FROM sp_streak_marks WHERE pet_id=$1 ORDER BY milestone', [petId])).rows;
+  const seen = new Set((await query('SELECT milestone FROM sp_streak_seen WHERE pet_id=$1 AND profile_id=$2', [petId, me])).rows.map((r) => r.milestone));
+  const next = STREAK_MILESTONES.find((m) => m > st.current) ?? null;
+  return { ...st, next, milestones: STREAK_MILESTONES.map((m) => ({ m, reward: STREAK_REWARD[m], reached: marks.some((x) => x.milestone === m), at: marks.find((x) => x.milestone === m)?.reached_at ?? null })), unseen: marks.map((x) => x.milestone).filter((m) => !seen.has(m)) };
+};
+export const streakSeen = async (me, petId, milestone) => {
+  if (!/^pet-[0-9a-f-]{36}$/.test(String(petId))) return err('not_found');
+  if (!(await query('SELECT 1 FROM sp_owners WHERE pet_id=$1 AND profile_id=$2', [petId, me])).rowCount) return err('not_found');
+  const m = Number(milestone); if (!STREAK_MILESTONES.includes(m)) return err('bad_request');
+  await query('INSERT INTO sp_streak_seen (pet_id, profile_id, milestone) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [petId, me, m]);
+  return { ok: true };
+};
+
 export const act = async (me, petId, action, p = {}) => {
   if (!/^pet-[0-9a-f-]{36}$/.test(String(petId))) return err('not_found');
   await ensurePlayer(me);
@@ -255,9 +295,11 @@ export const act = async (me, petId, action, p = {}) => {
       [petId, pet.energy, pet.satiety, pet.health, pet.hygiene, pet.fun, pet.stat_at, pet.sleeping_until, pet.level, pet.xp, JSON.stringify(skills), CARE.includes(action) ? 1 : 0]);
     if (coins) await c.query('UPDATE sp_players SET coins = coins + $2 WHERE profile_id = $1', [me, coins]);
     if (action !== 'touch' && action !== 'wake') await c.query(`INSERT INTO sp_history (pet_id,actor_id,action,detail,xp) VALUES ($1,$2,$3,$4,$5)`, [petId, me, action, JSON.stringify(detail), xp]);
+    let streakFresh = []; if (CARE.includes(action)) streakFresh = (await streakSweep(c, pet, owners)).fresh;
     if (CARE.includes(action)) { await taskTick(c, pet.shared ? owners : [me], action, pet.shared); if (xp) await eventTick(c, me, xp); }
     if (pet.shared && owners.length > 1 && CARE.includes(action)) notes.push({ users: owners.filter((x) => x !== me), kind: 'partner_action', title: `${pet.name}: партнёр рядом`, body: ({ feed: 'Питомца покормили', play: 'С питомцем поиграли', bathe: 'Питомца искупали', sleep: 'Питомец лёг спать', heal: 'Питомца вылечили', walk: 'Питомец ушёл на прогулку', teach: 'Питомца учат новому', photo: 'Сделали фото питомца' })[action], ref: pet.id, important: false });
-    result = { ok: true, xp, coins, levelUps: gained, ...detail };
+    result = { ok: true, xp, coins, levelUps: gained, streakReached: streakFresh, ...detail };
+    if (streakFresh.length) notes.push({ users: owners.filter((x) => x !== me), kind: 'streak', title: `${pet.name}: серия ухода — ${streakFresh.at(-1)} дней!`, body: 'Вы растите питомца без пропусков. Загляните за наградой.', important: true, ref: pet.id });
     return { pet: pet.id, shared: pet.shared, owners };
   });
   if (out?.error) return out;
@@ -497,7 +539,7 @@ export const petView = async (me, petId) => {
   const { rows: photos } = await query('SELECT id, pose, caption, actor_id, snapshot, created_at FROM sp_photos WHERE pet_id=$1 ORDER BY created_at DESC LIMIT 12', [petId]);
   const ach = (await achievements(me, petId)).achievements; const { rows: skins } = await query(`SELECT s.id,s.name,s.rarity,s.art,s.image_id,s.view,s.price_coins,s.price_points,s.unlock_level, (o.skin_id IS NOT NULL) AS owned FROM sp_skins s LEFT JOIN sp_skin_owned o ON o.skin_id=s.id AND o.profile_id=$2 WHERE s.species_id=$1 AND s.status='published' ORDER BY s.created_at`, [pet.speciesId, me]);
   return { pet, history: hist.map((h) => ({ id: h.id, action: h.action, xp: h.xp, at: h.created_at, detail: h.detail, actor: h.actor_id ? nm[h.actor_id] ?? { id: h.actor_id } : null })), levelTrack: track,
-    photos: photos.map((p) => ({ id: p.id, pose: p.pose, caption: p.caption, at: p.created_at, actor: p.actor_id, snapshot: p.snapshot })), achievements: ach, skins: skins.map((s) => ({ id: s.id, name: s.name, rarity: s.rarity, art: s.art, imageId: s.image_id, view: s.view, owned: s.owned || (s.price_coins === 0 && s.price_points === 0 && (s.unlock_level == null || pet.level >= s.unlock_level)), priceCoins: s.price_coins, pricePoints: s.price_points, unlockLevel: s.unlock_level })),
+    streak: await streakOf(me, petId), photos: photos.map((p) => ({ id: p.id, pose: p.pose, caption: p.caption, at: p.created_at, actor: p.actor_id, snapshot: p.snapshot })), achievements: ach, skins: skins.map((s) => ({ id: s.id, name: s.name, rarity: s.rarity, art: s.art, imageId: s.image_id, view: s.view, owned: s.owned || (s.price_coins === 0 && s.price_points === 0 && (s.unlock_level == null || pet.level >= s.unlock_level)), priceCoins: s.price_coins, pricePoints: s.price_points, unlockLevel: s.unlock_level })),
     foodItems: [...items.values()].filter((i) => i.kind === 'food').map((i) => ({ id: i.id, name: i.name })) };
 };
 

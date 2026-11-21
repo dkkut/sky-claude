@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMessengerStore } from '@/messenger/store';
 import { usePeopleSearch } from '@/messenger/usePeopleSearch';
 import { sp, errText, RARITY, MOOD, CHARACTER, SKILL, ACTION_LABEL, type Pet, type InvRow } from './api';
 import { PetPic } from './PetArt';
 import { Btn, Bar, Chip, Card, Modal, INK, itemIcon } from './ui';
 import { usePetsNav } from './nav';
+import { StreakCard, StreakCelebration, type Streak } from './Streak';
 
-type Detail = { pet: Pet; history: { id: number; action: string; xp: number; at: string; detail: any; actor: { id: string; name?: string } | null }[]; levelTrack: { level: number; reward: { coins?: number; items?: Record<string, number>; eggs?: Record<string, number> }; unlock: string | null }[]; photos: { id: string; pose: string; caption: string; at: string }[]; achievements: { key: string; title: string; progress: number; target: number; ready: boolean; claimed: boolean; petId?: string; reward: any }[]; skins: { id: string; name: string; rarity: string; owned: boolean; priceCoins: number; unlockLevel?: number | null; art: any; imageId?: string | null; view?: any }[] };
+type Detail = { streak: Streak; pet: Pet; history: { id: number; action: string; xp: number; at: string; detail: any; actor: { id: string; name?: string } | null }[]; levelTrack: { level: number; reward: { coins?: number; items?: Record<string, number>; eggs?: Record<string, number> }; unlock: string | null }[]; photos: { id: string; pose: string; caption: string; at: string }[]; achievements: { key: string; title: string; progress: number; target: number; ready: boolean; claimed: boolean; petId?: string; reward: any }[]; skins: { id: string; name: string; rarity: string; owned: boolean; priceCoins: number; unlockLevel?: number | null; art: any; imageId?: string | null; view?: any }[] };
 const POSES = [['sit', 'Сидит'], ['jump', 'Прыжок'], ['dance', 'Танец'], ['love', 'Любовь']];
 
 export function PetSheet({ id, inventory, myId, onClose, onChanged, toast }: { id: string; inventory: InvRow[]; myId: string; onClose: () => void; onChanged: () => void; toast: (m: string, bad?: boolean) => void }) {
@@ -38,6 +40,7 @@ export function PetSheet({ id, inventory, myId, onClose, onChanged, toast }: { i
           {p.owners.length > 1 && <div className="mt-2 text-[11px] opacity-80" style={{ color: INK }}>Растят: {p.owners.map((o) => o.name).join(' и ')}</div>}
         </div>
         <div className="min-w-0">
+          {d.streak && <div className="mb-3"><StreakCard s={d.streak} /></div>}
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3">
             <Bar v={p.satiety} label="Сытость" color="#ff9a3a" /><Bar v={p.energy} label="Энергия" color="#4aa3ff" /><Bar v={p.hygiene} label="Чистота" color="#38c9c9" /><Bar v={p.fun} label="Радость" color="#ff6fa8" /><Bar v={p.health} label="Здоровье" color="#48c774" />
           </div>
@@ -95,6 +98,7 @@ export function PetSheet({ id, inventory, myId, onClose, onChanged, toast }: { i
         )}
       </div>
       {name !== null && <Modal onClose={() => setName(null)} title="Имя питомца"><input autoFocus maxLength={20} value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-2xl px-4 py-3 text-[14px] outline-none" style={{ background: '#fff', color: INK }} translate="no" /><div className="mt-3 flex justify-end"><Btn onClick={async () => { const r = await post(`/pet/${id}/rename`, { name }, 'Имя изменено'); if (r.ok) setName(null); }}>Сохранить</Btn></div></Modal>}
+      {d.streak?.unseen?.length > 0 && createPortal(<StreakCelebration milestone={d.streak.unseen[0]} reward={d.streak.milestones.find((x) => x.m === d.streak.unseen[0])?.reward ?? 0} pet={p} onClose={() => { const m = d.streak.unseen[0]; setD({ ...d, streak: { ...d.streak, unseen: d.streak.unseen.slice(1) } }); void sp(`/pet/${id}/streak-seen`, 'POST', { milestone: m }); }} />, document.body)}
     </Modal>
   );
 }
