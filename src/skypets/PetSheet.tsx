@@ -40,7 +40,7 @@ export function PetSheet({ id, inventory, myId, onClose, onChanged, toast }: { i
           {p.owners.length > 1 && <div className="mt-2 text-[11px] opacity-80" style={{ color: INK }}>Растят: {p.owners.map((o) => o.name).join(' и ')}</div>}
         </div>
         <div className="min-w-0">
-          {d.streak && <div className="mb-3"><StreakCard s={d.streak} /></div>}
+          {d.streak && <div className="mb-3"><StreakCard s={d.streak} busy={busy} onRestore={() => { setBusy(true); void post(`/pet/${id}/streak-restore`, {}, 'Серия восстановлена!').finally(() => setBusy(false)); }} onFreeze={() => { setBusy(true); void post(`/pet/${id}/streak-freeze`, {}, 'Серия заморожена').finally(() => setBusy(false)); }} /></div>}
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3">
             <Bar v={p.satiety} label="Сытость" color="#ff9a3a" /><Bar v={p.energy} label="Энергия" color="#4aa3ff" /><Bar v={p.hygiene} label="Чистота" color="#38c9c9" /><Bar v={p.fun} label="Радость" color="#ff6fa8" /><Bar v={p.health} label="Здоровье" color="#48c774" />
           </div>

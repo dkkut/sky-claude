@@ -4,7 +4,7 @@ import { PetPic } from './PetArt';
 import { Btn, Card, INK } from './ui';
 import type { Pet } from './api';
 
-export type Streak = { current: number; best: number; doneToday: boolean; next: number | null; milestones: { m: number; reward: number; reached: boolean; at: string | null }[]; unseen: number[] };
+export type Streak = { current: number; best: number; doneToday: boolean; next: number | null; milestones: { m: number; reward: number; reached: boolean; at: string | null }[]; unseen: number[]; restore: { available: boolean; possible: boolean; lostStreak: number; left: number; perMonth: number; until: string }; freeze: { available: boolean; left: number; days: number; active: boolean; until: string | null } };
 
 /** Цвета и названия ступеней серии. */
 const TIER: Record<number, { name: string; a: string; b: string; glow: string }> = {
@@ -18,7 +18,8 @@ const TIER: Record<number, { name: string; a: string; b: string; glow: string }>
 };
 export const tierOf = (m: number) => TIER[m] ?? TIER[10];
 
-export function StreakCard({ s }: { s: Streak }) {
+export function StreakCard({ s, onRestore, onFreeze, busy }: { s: Streak; onRestore?: () => void; onFreeze?: () => void; busy?: boolean }) {
+  const until = s.freeze?.until ? s.freeze.until.split('-').reverse().slice(0, 2).join('.') : '';
   const prev = [...s.milestones].reverse().find((x) => x.m <= s.current)?.m ?? 0;
   const pct = s.next ? Math.min(100, Math.round(((s.current - prev) / (s.next - prev)) * 100)) : 100;
   return (
@@ -36,6 +37,18 @@ export function StreakCard({ s }: { s: Streak }) {
         {s.milestones.map((x) => { const t = tierOf(x.m); return (
           <span key={x.m} title={`+${x.reward} монет`} className="rounded-full px-2.5 py-1 text-[11px] font-extrabold" style={x.reached ? { background: `linear-gradient(135deg,${t.a},${t.b})`, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.25)' } : { background: 'rgba(123,92,240,.1)', color: INK, opacity: .55 }}>{x.reached ? '★' : '☆'} {x.m}</span>
         ); })}
+      </div>
+      {s.restore?.possible && (
+        <div className="mt-3 rounded-2xl p-2.5" style={{ background: 'linear-gradient(135deg,rgba(255,176,46,.18),rgba(255,93,74,.16))', border: '1px solid rgba(255,120,60,.35)' }}>
+          <div className="text-[13px] font-extrabold" style={{ color: INK }}>{`Серия ${s.restore.lostStreak} дн. оборвалась вчера`}</div>
+          <div className="mt-0.5 text-[11px] opacity-75" style={{ color: INK }}>{s.restore.available ? `Её можно вернуть до конца сегодняшнего дня (по UTC). Осталось ${s.restore.left} из ${s.restore.perMonth} в этом месяце.` : `В этом месяце все ${s.restore.perMonth} восстановлений уже использованы.`}</div>
+          {s.restore.available && onRestore && <div className="mt-2"><Btn small onClick={onRestore} disabled={busy}>🔥 Восстановить серию</Btn></div>}
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {s.freeze?.active && <span className="rounded-full px-2.5 py-1 text-[11px] font-extrabold" style={{ background: 'rgba(74,163,255,.18)', color: '#2a7ad6' }}>{`❄ Заморозка до ${until}`}</span>}
+        {s.freeze?.available && onFreeze && <Btn kind="soft" small onClick={onFreeze} disabled={busy}>{`❄ Заморозить серию на ${s.freeze.days} дней`}</Btn>}
+        {!s.freeze?.active && !s.freeze?.available && s.freeze?.left === 0 && <span className="text-[11px] opacity-65" style={{ color: INK }}>Заморозка в этом месяце уже использована</span>}
       </div>
     </Card>
   );

@@ -38,4 +38,38 @@ await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); for (const d of [1
 s = await core.streakOf(A, pid); ok(s.current === 3 && s.best === 3 && s.milestones.find((m) => m.m === 10).reached, `перерыв: current ${s.current} best ${s.best}`);
 // 7) серия жива, если последний день — вчера; мертва, если позавчера
 await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); await hist(2); await hist(3); s = await core.streakOf(A, pid); ok(s.current === 0 && s.best === 2, 'последний день позавчера — серия оборвана');
+// 8) восстановление: серия 4 дня (дни 5..2 назад), вчера пропущен → можно вернуть
+await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); await query('DELETE FROM sp_streak_marks WHERE pet_id=$1', [pid]);
+for (const d of [5, 4, 3, 2]) await hist(d, A);
+s = await core.streakOf(A, pid); ok(s.current === 0 && s.restore.available && s.restore.lostStreak === 4 && s.restore.left === 5, '8: вчера пропущен, серия оборвана, восстановление доступно: ' + JSON.stringify(s.restore));
+ok((await core.streakRestore('acc-nobody', pid)).error === 'not_found', '8: не хозяин');
+let rr = await core.streakRestore(B, pid); ok(rr.ok && rr.streak.current === 5 && rr.streak.restore.left === 4 && !rr.streak.restore.possible, '8: восстановлено, серия 5 (с вчера), осталось 4: ' + JSON.stringify(rr.error ?? rr.streak.current));
+ok((await core.streakRestore(A, pid)).error === 'nothing_to_restore', '8: второй раз нечего');
+const rA = await core.streakOf(A, pid); ok(rA.restore.left === 5, '8: лимит у A отдельный от B');
+// 9) два пропущенных дня — вернуть нельзя
+await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); await query('DELETE FROM sp_streak_saves WHERE pet_id=$1', [pid]);
+for (const d of [6, 5, 4, 3]) await hist(d, A);
+s = await core.streakOf(A, pid); ok(!s.restore.possible && (await core.streakRestore(A, pid)).error === 'nothing_to_restore', '9: пропуск двух дней не восстановить');
+// 10) лимит 5 в месяц на человека
+for (let i = 0; i < 5; i++) { await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); await query(`DELETE FROM sp_streak_saves WHERE pet_id=$1 AND kind='restore' AND day = (now() - interval '1 day')::date`, [pid]); for (const d of [4, 3, 2]) await hist(d, A);
+  const x = await core.streakRestore(A, pid); if (i < 5 && !x.ok && i < 4) ok(false, '10: восстановление ' + i + ' ' + x.error); }
+await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); await query(`DELETE FROM sp_streak_saves WHERE pet_id=$1 AND kind='restore'`, [pid]);
+await query(`DELETE FROM sp_streak_saves WHERE profile_id=$1`, [A]);
+for (let i = 0; i < 5; i++) await query(`INSERT INTO sp_streak_saves (pet_id, profile_id, kind, day, grp, created_at) VALUES ($1,$2,'restore', now()::date - $3::int - 10, $4, now())`, [pid, A, i, 'x' + i]);
+for (const d of [4, 3, 2]) await hist(d, A);
+ok((await core.streakRestore(A, pid)).error === 'restore_limit', '10: шестое восстановление за месяц отклонено');
+ok((await core.streakRestore(B, pid)).ok, '10: у другого человека свой лимит');
+// 11) заморозка: 5 дней не рвут серию и не растят
+await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); await query('DELETE FROM sp_streak_saves WHERE pet_id=$1', [pid]); await query('DELETE FROM sp_streak_saves WHERE profile_id=ANY($1)', [[A, B]]);
+ok((await core.streakFreeze(A, pid)).error === 'no_streak', '11: без серии замораживать нечего');
+for (const d of [3, 2, 1, 0]) await hist(d, A);
+const fz = await core.streakFreeze(A, pid); ok(fz.ok && fz.streak.freeze.active && !fz.streak.freeze.available && fz.streak.freeze.left === 0 && fz.streak.current === 4, '11: заморожено: ' + JSON.stringify(fz.error ?? fz.streak.freeze));
+ok((await core.streakFreeze(A, pid)).error === 'freeze_active', '11: повторно нельзя');
+ok((await core.streakFreeze(B, pid)).error === 'freeze_active', '11: у питомца одна активная заморозка');
+// сдвигаем «сегодня» назад: ухода нет уже 3 дня, но заморозка прикрывает
+const old = (await query(`SELECT id FROM sp_streak_saves WHERE pet_id=$1`, [pid])).rowCount; ok(old === 5, '11: 5 дней заморозки');
+await query(`UPDATE sp_streak_saves SET day = day - 3 WHERE pet_id=$1`, [pid]); await query('DELETE FROM sp_history WHERE pet_id=$1', [pid]); for (const d of [5, 4, 3]) await hist(d, A);
+s = await core.streakOf(A, pid); ok(s.current === 3 && !s.restore.possible, '11: дни заморозки (−3…+1) серию не порвали и не выросли: current ' + s.current);
+await query('DELETE FROM sp_streak_saves WHERE pet_id=$1', [pid]); await query(`UPDATE sp_history SET created_at = created_at - interval '3 day' WHERE pet_id=$1`, [pid]);
+s = await core.streakOf(A, pid); ok(s.current === 0, '11: без заморозки та же картина — серия оборвана');
 console.log(`streak: ${pass} ok, ${fail} fail`); process.exit(fail ? 1 : 0);

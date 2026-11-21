@@ -218,19 +218,36 @@ const CARE = ['feed', 'play', 'bathe', 'sleep', 'heal', 'walk', 'teach', 'photo'
 // последний день ухода — сегодня или вчера. Вехи и награды (монеты каждому хозяину) — раз и навсегда.
 export const STREAK_MILESTONES = [10, 30, 100, 200, 300, 400, 500];
 const STREAK_REWARD = { 10: 50, 30: 150, 100: 500, 200: 1000, 300: 1500, 400: 2000, 500: 3000 };
-const streakCalc = (days) => {
-  const set = new Set(days); const fmt = (d) => d.toISOString().slice(0, 10); const day = 86400000;
-  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
-  let cur = 0; let t = set.has(fmt(today)) ? today.getTime() : today.getTime() - day;
-  while (set.has(fmt(new Date(t)))) { cur++; t -= day; }
-  const sorted = [...set].sort(); let best = 0, run = 0, prev = null;
-  for (const d of sorted) { const ms = Date.parse(d); run = prev !== null && ms - prev === day ? run + 1 : 1; prev = ms; if (run > best) best = run; }
-  return { current: cur, best, doneToday: set.has(fmt(today)) };
+const DAYMS = 86400000; const fmtDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+/** care — дни ухода, restored — дни, закрытые восстановлением (считаются как уход), frozen — дни заморозки (серию не рвут, но и не растят). */
+const streakCalc = (care, restored = [], frozen = [], nowMs = Date.now()) => {
+  const days = new Set([...care, ...restored]); const fr = new Set(frozen);
+  const today = Math.floor(nowMs / DAYMS) * DAYMS; const all = [...days, ...fr].sort();
+  if (!all.length) return { current: 0, best: 0, doneToday: false, runBefore: 0, missedYesterday: false, frozenToday: false };
+  let run = 0, best = 0, runBefore = 0; const yest = today - DAYMS;
+  for (let t = Date.parse(all[0]); t <= yest; t += DAYMS) {
+    if (t === yest) runBefore = run;
+    const d = fmtDay(t); if (days.has(d)) { run++; if (run > best) best = run; } else if (!fr.has(d)) run = 0;
+  }
+  const doneToday = days.has(fmtDay(today)); const current = run + (doneToday ? 1 : 0); if (current > best) best = current;
+  return { current, best, doneToday, runBefore, missedYesterday: !days.has(fmtDay(yest)) && !fr.has(fmtDay(yest)), frozenToday: fr.has(fmtDay(today)) };
 };
-const careDays = async (q, petId) => (await q(`SELECT DISTINCT to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS d FROM sp_history WHERE pet_id=$1 AND actor_id IS NOT NULL AND action = ANY($2::text[]) ORDER BY d DESC LIMIT 700`, [petId, CARE])).rows.map((r) => r.d);
+const careDays = async (q, petId) => {
+  const care = (await q(`SELECT DISTINCT to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS d FROM sp_history WHERE pet_id=$1 AND actor_id IS NOT NULL AND action = ANY($2::text[]) ORDER BY d DESC LIMIT 700`, [petId, CARE])).rows.map((r) => r.d);
+  const saves = (await q(`SELECT kind, to_char(day,'YYYY-MM-DD') AS d FROM sp_streak_saves WHERE pet_id=$1`, [petId])).rows;
+  return { care, restored: saves.filter((x) => x.kind === 'restore').map((x) => x.d), frozen: saves.filter((x) => x.kind === 'freeze').map((x) => x.d) };
+};
+const calcFor = async (q, petId) => { const d = await careDays(q, petId); return { ...streakCalc(d.care, d.restored, d.frozen), frozenDays: d.frozen }; };
+export const RESTORES_PER_MONTH = 5, FREEZE_DAYS = 5;
+const monthStart = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1)).toISOString(); };
+const quotas = async (q, me) => {
+  const r = Number((await q(`SELECT count(*) AS n FROM sp_streak_saves WHERE profile_id=$1 AND kind='restore' AND created_at >= $2`, [me, monthStart()])).rows[0].n);
+  const f = Number((await q(`SELECT count(DISTINCT grp) AS n FROM sp_streak_saves WHERE profile_id=$1 AND kind='freeze' AND created_at >= $2`, [me, monthStart()])).rows[0].n);
+  return { restoresLeft: Math.max(0, RESTORES_PER_MONTH - r), freezeLeft: Math.max(0, 1 - f) };
+};
 /** Записывает новые вехи (под транзакцией питомца) и награждает хозяев. Возвращает список только что достигнутых. */
 const streakSweep = async (c, pet, owners) => {
-  const st = streakCalc(await careDays((a, b) => c.query(a, b), pet.id)); const fresh = [];
+  const st = await calcFor((a, b) => c.query(a, b), pet.id); const fresh = [];
   for (const m of STREAK_MILESTONES) {
     if (st.best < m && st.current < m) break;
     const r = await c.query('INSERT INTO sp_streak_marks (pet_id, milestone) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING 1', [pet.id, m]);
@@ -239,11 +256,14 @@ const streakSweep = async (c, pet, owners) => {
   return { st, fresh };
 };
 export const streakOf = async (me, petId) => {
-  const st = streakCalc(await careDays((a, b) => query(a, b), petId));
+  const st = await calcFor((a, b) => query(a, b), petId); const qt = await quotas((a, b) => query(a, b), me);
+  const todayMs = Math.floor(Date.now() / DAYMS) * DAYMS; const futureFrozen = st.frozenDays.filter((d) => Date.parse(d) >= todayMs).sort();
+  const restore = { available: st.missedYesterday && st.runBefore > 0 && qt.restoresLeft > 0, possible: st.missedYesterday && st.runBefore > 0, lostStreak: st.runBefore, left: qt.restoresLeft, perMonth: RESTORES_PER_MONTH, until: new Date(todayMs + DAYMS).toISOString() };
+  const freeze = { available: qt.freezeLeft > 0 && futureFrozen.length === 0 && st.current > 0, left: qt.freezeLeft, days: FREEZE_DAYS, active: futureFrozen.length > 0, until: futureFrozen.length ? fmtDay(Date.parse(futureFrozen.at(-1))) : null };
   const marks = (await query('SELECT milestone, reached_at FROM sp_streak_marks WHERE pet_id=$1 ORDER BY milestone', [petId])).rows;
   const seen = new Set((await query('SELECT milestone FROM sp_streak_seen WHERE pet_id=$1 AND profile_id=$2', [petId, me])).rows.map((r) => r.milestone));
   const next = STREAK_MILESTONES.find((m) => m > st.current) ?? null;
-  return { ...st, next, milestones: STREAK_MILESTONES.map((m) => ({ m, reward: STREAK_REWARD[m], reached: marks.some((x) => x.milestone === m), at: marks.find((x) => x.milestone === m)?.reached_at ?? null })), unseen: marks.map((x) => x.milestone).filter((m) => !seen.has(m)) };
+  return { current: st.current, best: st.best, doneToday: st.doneToday, restore, freeze, next, milestones: STREAK_MILESTONES.map((m) => ({ m, reward: STREAK_REWARD[m], reached: marks.some((x) => x.milestone === m), at: marks.find((x) => x.milestone === m)?.reached_at ?? null })), unseen: marks.map((x) => x.milestone).filter((m) => !seen.has(m)) };
 };
 export const streakSeen = async (me, petId, milestone) => {
   if (!/^pet-[0-9a-f-]{36}$/.test(String(petId))) return err('not_found');
@@ -565,3 +585,45 @@ export const daily = async (me) => {
 };
 export const SUPPORTED = { CATEGORIES, RARITIES };
 export { names, loadPets, uid, clean, day, week, clamp, houseFor, bonuses, taskTick, eventTick, achSweep, poke, view };
+
+/** Восстановить серию: закрыть вчерашний пропущенный день. Только в течение 24 часов после обрыва, 5 раз в месяц на человека. */
+export const streakRestore = async (me, petId) => {
+  if (!/^pet-[0-9a-f-]{36}$/.test(String(petId))) return err('not_found');
+  const out = await inTx(async (c) => {
+    const pet = (await c.query('SELECT * FROM sp_pets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [petId])).rows[0]; if (!pet) return err('not_found');
+    const owners = (await c.query('SELECT profile_id FROM sp_owners WHERE pet_id=$1', [petId])).rows.map((r) => r.profile_id); if (!owners.includes(me)) return err('not_found');
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`sp-save:${me}`]);
+    const st = await calcFor((a, b) => c.query(a, b), petId);
+    if (!st.missedYesterday || st.runBefore < 1) return err('nothing_to_restore');
+    if ((await quotas((a, b) => c.query(a, b), me)).restoresLeft < 1) return err('restore_limit');
+    const day = fmtDay(Math.floor(Date.now() / DAYMS) * DAYMS - DAYMS);
+    await c.query(`INSERT INTO sp_streak_saves (pet_id, profile_id, kind, day, grp) VALUES ($1,$2,'restore',$3,$4)`, [petId, me, day, `r:${petId}:${day}`]);
+    await c.query(`INSERT INTO sp_history (pet_id,actor_id,action,detail) VALUES ($1,$2,'streak_restore',$3)`, [petId, me, JSON.stringify({ day, lost: st.runBefore })]);
+    const { fresh } = await streakSweep(c, pet, owners);
+    return { pet: pet.id, owners, name: pet.name, fresh };
+  });
+  if (out?.error) return out;
+  poke(out.owners, { kind: 'pet', petId: out.pet });
+  await ping(out.owners.filter((x) => x !== me), 'streak', `${out.name}: серия спасена`, 'Партнёр восстановил серию ухода.', { important: false, ref: out.pet });
+  return { ok: true, streakReached: out.fresh, streak: await streakOf(me, petId) };
+};
+/** Заморозка: 5 дней, в которые серия не рвётся (и не растёт). Одна в месяц на человека, одна активная на питомца. */
+export const streakFreeze = async (me, petId) => {
+  if (!/^pet-[0-9a-f-]{36}$/.test(String(petId))) return err('not_found');
+  const out = await inTx(async (c) => {
+    const pet = (await c.query('SELECT * FROM sp_pets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [petId])).rows[0]; if (!pet) return err('not_found');
+    const owners = (await c.query('SELECT profile_id FROM sp_owners WHERE pet_id=$1', [petId])).rows.map((r) => r.profile_id); if (!owners.includes(me)) return err('not_found');
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`sp-save:${me}`]);
+    const st = await calcFor((a, b) => c.query(a, b), petId); const todayMs = Math.floor(Date.now() / DAYMS) * DAYMS;
+    if (st.frozenDays.some((d) => Date.parse(d) >= todayMs)) return err('freeze_active');
+    if (st.current < 1) return err('no_streak');
+    if ((await quotas((a, b) => c.query(a, b), me)).freezeLeft < 1) return err('freeze_limit');
+    const grp = `f:${petId}:${todayMs}`;
+    for (let i = 0; i < FREEZE_DAYS; i++) await c.query(`INSERT INTO sp_streak_saves (pet_id, profile_id, kind, day, grp) VALUES ($1,$2,'freeze',$3,$4) ON CONFLICT DO NOTHING`, [petId, me, fmtDay(todayMs + i * DAYMS), grp]);
+    await c.query(`INSERT INTO sp_history (pet_id,actor_id,action,detail) VALUES ($1,$2,'streak_freeze',$3)`, [petId, me, JSON.stringify({ days: FREEZE_DAYS })]);
+    return { pet: pet.id, owners };
+  });
+  if (out?.error) return out;
+  poke(out.owners, { kind: 'pet', petId: out.pet });
+  return { ok: true, streak: await streakOf(me, petId) };
+};
