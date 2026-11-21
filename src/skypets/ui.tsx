@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { FurnArt, hasArt } from './Furniture';
 import { motion } from 'framer-motion';
 
 export const GRAD = 'linear-gradient(160deg,#fff4fb 0%,#efe6ff 45%,#dff1ff 100%)';
@@ -38,6 +39,12 @@ export const Coin = ({ n }: { n: number }) => <span className="inline-flex items
 export const rid = () => `buy-${crypto.randomUUID()}`;
 export const ICON: Record<string, string> = { bone: '🦴', fish: '🐟', cake: '🍰', leaf: '🌿', ball: '⚽', rope: '🪢', puzzle: '🧩', star: '⭐', bow: '🎀', crown: '👑', scarf: '🧣', bed: '🛏️', bowl: '🥣', sofa: '🛋️', gym: '🏋️', plant: '🪴', lamp: '💡', wall: '🧱', floor: '🟫', door: '🚪', table: '🍽️', fridge: '🧊', stove: '🍳', tub: '🛁', sink: '🚰', shower: '🚿', wardrobe: '🚪', shelf: '📚', tv: '📺', nightstand: '🗄️', armchair: '💺', desk: '🖥️', carpet: '🟪', curtain: '🪟', picture: '🖼️', clock: '🕰️', flowers: '💐', aquarium: '🐠', tree: '🌳', bush: '🌿', fence: '🚧', swing: '🎠', slide: '🛝', sandbox: '🏖️', tunnel: '🕳️', steak: '🥩', sushi: '🍣', pizza: '🍕', burger: '🍔', icecream: '🍦', fruit: '🍓', honey: '🍯', cookie: '🍪' };
 export const itemIcon = (i?: { art?: { icon?: string }; kind?: string } | null) => ICON[i?.art?.icon ?? ''] ?? ({ food: '🍖', toy: '🧸', accessory: '🎀', clothes: '👕', furniture: '🪑', interior: '🖼️', decor: '🪴', house: '🏠', bed: '🛏️', bowl: '🥣' } as Record<string, string>)[i?.kind ?? ''] ?? '🎁';
+/** Предмет: мебель и декор рисуются векторно (Furniture.tsx), остальное — значком. */
+export function ItemArt({ item, size = 40 }: { item?: { art?: { icon?: string }; kind?: string } | null; size?: number }) {
+  const k = item?.art?.icon && hasArt(item.art.icon) ? item.art.icon : ({ bed: 'bed', bowl: 'bowl', decor: 'plant', furniture: 'sofa' } as Record<string, string>)[item?.kind ?? ''];
+  if (k && hasArt(k)) return <FurnArt name={k} size={size} />;
+  return <span style={{ fontSize: size * 0.8, lineHeight: 1 }} aria-hidden>{itemIcon(item)}</span>;
+}
 export const useReload = (fn: () => void, ms = 15000) => {
   useEffect(() => { fn(); const h = () => fn(); window.addEventListener('sky:skypets', h); const t = window.setInterval(() => { if (!document.hidden) fn(); }, ms); return () => { window.removeEventListener('sky:skypets', h); window.clearInterval(t); }; }, [fn, ms]);
 };

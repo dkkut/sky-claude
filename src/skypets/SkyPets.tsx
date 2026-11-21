@@ -6,7 +6,8 @@ import { sp, errText, ROOM, MOOD, type Overview, type House, type Pet, type InvR
 import { PetPic } from './PetArt';
 import { PetSheet } from './PetSheet';
 import { Eggs, ShopScreen, InventoryScreen, TasksScreen, AchievementsScreen, Collection, CityScreen } from './Screens';
-import { Btn, Card, Chip, Empty, Coin, GRAD, INK, itemIcon, useToast, useReload } from './ui';
+import { FurnArt } from './Furniture';
+import { Btn, Card, Chip, Empty, Coin, GRAD, INK, itemIcon, ItemArt, useToast, useReload } from './ui';
 import { usePetsNav } from './nav';
 
 const CSS = `
@@ -24,12 +25,12 @@ const WALL: Record<string, string> = { living: '#f6dcee', kitchen: '#ffeccc', ba
 const FLOOR: Record<string, string> = { living: '#e6c7a2', kitchen: '#e8d9c4', bath: '#bfd9e6', bed: '#cdb9e8', play: '#f0d98f', garden: '#9ed67a' };
 /** Встроенная обстановка комнат: рисуется всегда, не убирается и не мешает нажатиям; свою мебель человек ставит поверх. */
 const FIXTURES: Record<string, [string, number, number, number][]> = {
-  living: [['🖼️', 55, 24, 36], ['🕰️', 82, 20, 30], ['📺', 40, 70, 42], ['🛋️', 70, 78, 64], ['🪴', 91, 76, 44], ['🪴', 9, 78, 38]],
-  kitchen: [['🕰️', 60, 20, 30], ['🧊', 10, 72, 58], ['🍳', 26, 76, 44], ['🍽️', 62, 80, 48], ['🪑', 48, 82, 34], ['🪑', 78, 82, 34], ['🥣', 92, 84, 26]],
-  bath: [['🪞', 52, 28, 38], ['🚿', 72, 62, 52], ['🚰', 50, 72, 40], ['🛁', 22, 80, 54], ['🧼', 90, 82, 24], ['🧻', 84, 70, 26]],
-  bed: [['🪟', 62, 28, 46], ['💡', 42, 62, 26], ['🛏️', 22, 78, 66], ['🗄️', 42, 80, 36], ['🧸', 12, 86, 26], ['🚪', 90, 66, 54]],
-  play: [['🎈', 40, 24, 32], ['🎨', 80, 36, 36], ['🧩', 60, 84, 30], ['🧸', 20, 80, 40], ['⚽', 88, 84, 26], ['🛝', 74, 74, 52]],
-  garden: [['☀️', 50, 16, 36], ['🌳', 14, 62, 66], ['🏡', 82, 54, 56], ['🌷', 40, 84, 28], ['🌻', 52, 86, 28], ['🐝', 66, 36, 22], ['🌿', 92, 84, 28]],
+  living: [['picture', 52, 26, 40], ['clock', 82, 22, 26], ['tv', 38, 66, 44], ['sofa', 70, 74, 66], ['plant', 92, 72, 42], ['plant', 8, 76, 40], ['carpet', 54, 90, 90]],
+  kitchen: [['clock', 58, 22, 26], ['fridge', 10, 62, 66], ['stove', 28, 70, 50], ['table', 62, 76, 56], ['chair', 46, 78, 36], ['chair', 80, 78, 36], ['flowers', 92, 78, 30]],
+  bath: [['mirror', 52, 30, 40], ['shower', 72, 60, 54], ['sink', 48, 72, 44], ['tub', 22, 74, 58], ['plant', 92, 78, 34]],
+  bed: [['window', 62, 32, 50], ['lamp', 40, 62, 34], ['bed', 24, 74, 70], ['nightstand', 42, 78, 38], ['teddy', 12, 86, 26], ['door', 90, 58, 56]],
+  play: [['balloon', 40, 26, 34], ['easel', 80, 56, 52], ['blocks', 58, 82, 34], ['teddy', 20, 78, 40], ['ball', 88, 84, 24], ['slide', 72, 70, 52]],
+  garden: [['sun', 50, 18, 34], ['tree', 14, 60, 66], ['house', 82, 54, 58], ['tulip', 40, 82, 30], ['tulip', 52, 84, 30], ['bush', 92, 82, 32]],
 };
 const hash = (s: string) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 
@@ -40,7 +41,7 @@ function Scene({ house, pets, room, decor, selected, onPet, onTap, onRemove, inv
   const ref = useRef<HTMLDivElement>(null); const st = house.style?.[room] ?? {}; const wall = st.wall ?? WALL[room] ?? '#eee', floor = st.floor ?? FLOOR[room] ?? '#ddd';
   const placed = house.placed.filter((x) => x.room === room); const bed = placed.find((x) => x.itemId.startsWith('bed'));
   const items = useMemo(() => new Map(inv.map((r) => [r.itemId, r.item])), [inv]);
-  const icon = (id: string) => { const it = items.get(id); return it ? itemIcon(it) : id.startsWith('bed') ? '🛏️' : id.startsWith('bowl') ? '🥣' : id.startsWith('furn') ? '🛋️' : id.startsWith('decor') ? '🪴' : id.startsWith('toy') ? '🧸' : '🎁'; };
+  const icon = (id: string) => { const it = items.get(id); const k = id.startsWith('bed') ? 'bed' : id.startsWith('bowl') ? 'bowl' : id.startsWith('furn') ? 'sofa' : id.startsWith('decor') ? 'plant' : id.startsWith('toy') ? 'teddy' : ''; return it ? <ItemArt item={it} size={52} /> : k ? <FurnArt name={k} size={52} /> : <span className="text-[40px]">🎁</span>; };
   return (
     <div ref={ref} className="relative w-full select-none overflow-hidden rounded-[30px]" style={{ aspectRatio: '16 / 10', minHeight: 230, background: wall, boxShadow: 'inset 0 -8px 24px rgba(0,0,0,.06), 0 12px 30px rgba(90,60,190,.18)', cursor: decor && selected ? 'crosshair' : 'default' }}
       onClick={(e) => { if (!decor || !selected || !ref.current) return; const r = ref.current.getBoundingClientRect(); onTap(((e.clientX - r.left) / r.width) * 100, ((e.clientY - r.top) / r.height) * 100); }}>
@@ -49,8 +50,8 @@ function Scene({ house, pets, room, decor, selected, onPet, onTap, onRemove, inv
       {room === 'kitchen' && <div className="absolute inset-x-[6%] top-[40%] h-[10%] rounded-xl" style={{ background: '#fff', opacity: .6 }} />}
       {room === 'bath' && <div className="absolute left-[8%] top-[48%] h-[26%] w-[34%] rounded-b-[40px] rounded-t-xl" style={{ background: '#fff', boxShadow: 'inset 0 -8px 0 #cfe6f3' }} />}
       {room === 'garden' && <div className="absolute left-0 right-0 top-[8%] mx-auto h-[26%] w-[26%] rounded-full" style={{ background: '#fff7b0', filter: 'blur(2px)' }} />}
-      {(FIXTURES[room] ?? []).map(([e, x, y, sz], i) => <span key={`fx${i}`} aria-hidden className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${x}%`, top: `${y}%`, fontSize: sz, opacity: 0.9, filter: 'drop-shadow(0 3px 3px rgba(0,0,0,.15))' }}>{e}</span>)}
-      {placed.map((x) => <button key={x.uid} type="button" aria-label="Предмет" onClick={(e) => { e.stopPropagation(); if (decor && !locked) onRemove(x.uid); }} className="absolute -translate-x-1/2 -translate-y-1/2 text-[40px] leading-none" style={{ left: `${x.x}%`, top: `${x.y}%`, filter: decor ? 'drop-shadow(0 0 4px #7b5cf0)' : 'drop-shadow(0 3px 3px rgba(0,0,0,.2))', cursor: decor ? 'pointer' : 'default' }}>{icon(x.itemId)}</button>)}
+      {(FIXTURES[room] ?? []).map(([e, x, y, sz], i) => <span key={`fx${i}`} aria-hidden className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${x}%`, top: `${y}%`, zIndex: e === 'carpet' ? 0 : undefined }}><FurnArt name={e} size={sz * 1.25} /></span>)}
+      {placed.map((x) => <button key={x.uid} type="button" aria-label="Предмет" onClick={(e) => { e.stopPropagation(); if (decor && !locked) onRemove(x.uid); }} className="absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${x.x}%`, top: `${x.y}%`, filter: decor ? 'drop-shadow(0 0 4px #7b5cf0)' : 'drop-shadow(0 3px 3px rgba(0,0,0,.2))', cursor: decor ? 'pointer' : 'default' }}>{icon(x.itemId)}</button>)}
       {pets.map((p, i) => {
         const h = hash(p.id), dx = 14 + (h % 60), dy = 52 + ((h >> 3) % 22); const target = p.sleeping ? (bed ? { x: bed.x, y: bed.y - 2 } : { x: 50, y: 74 }) : null;
         const need = p.needs[0]; const wander = p.sleeping ? [] : [dx, 24 + ((h >> 5) % 50), 70 - ((h >> 7) % 35), dx].map((v) => `${v}%`);
@@ -112,7 +113,7 @@ export default function SkyPets() {
                 {([['🏪', 'Магазин', () => setTab('shop')], ['🎒', 'Инвентарь', () => setTab('inventory')], ['🎨', decor ? 'Готово' : 'Декор', () => { setDecor(!decor); setSel(null); }], ['🥚', 'Яйца', () => setTab('eggs')], ['🚪', 'Выйти', () => useModuleStore.getState().setActiveModule('messages')]] as const).map(([i, l, f]) => <button key={l} type="button" onClick={f} aria-label={l} className="grid h-14 flex-1 place-items-center rounded-2xl text-[22px] md:flex-none" style={{ background: decor && l === 'Готово' ? '#7b5cf0' : 'rgba(255,255,255,.85)', boxShadow: '0 4px 14px rgba(90,60,190,.15)' }}><span aria-hidden>{i}</span><span className="text-[9px] font-bold" style={{ color: decor && l === 'Готово' ? '#fff' : INK }}>{l}</span></button>)}
               </div>
             </div>
-            {decor && <Card><div className="mb-1 text-[12px] font-extrabold">Что поставить ({house?.placed.length ?? 0}/{house?.limit})</div>{placeable.length === 0 ? <div className="text-[12px] opacity-70">Купите мебель и декор в магазине.</div> : <div className="flex flex-wrap gap-2">{placeable.map((r) => <Btn key={r.itemId} small kind={sel?.itemId === r.itemId ? 'main' : 'soft'} onClick={() => (r.item?.kind === 'house' ? expand(r) : setSel(r))}>{itemIcon(r.item)} {r.item?.name} ×{r.qty}</Btn>)}</div>}</Card>}
+            {decor && <Card><div className="mb-1 text-[12px] font-extrabold">Что поставить ({house?.placed.length ?? 0}/{house?.limit})</div>{placeable.length === 0 ? <div className="text-[12px] opacity-70">Купите мебель и декор в магазине.</div> : <div className="flex flex-wrap gap-2">{placeable.map((r) => <Btn key={r.itemId} small kind={sel?.itemId === r.itemId ? 'main' : 'soft'} onClick={() => (r.item?.kind === 'house' ? expand(r) : setSel(r))}><span className="inline-flex items-center gap-1"><ItemArt item={r.item} size={20} /> {r.item?.name} ×{r.qty}</span></Btn>)}</div>}</Card>}
             {scenePets.length > 0 && !decor && <div className="text-center text-[11px] opacity-60">Нажмите на питомца: он отреагирует, а внизу появятся быстрые действия.</div>}
             {ov.pets.filter((p) => p.needs.length > 0 && !p.sleeping).slice(0, 3).map((p) => <Card key={p.id} onClick={() => setOpen(p.id)} className="flex items-center gap-3"><PetPic pet={p} size={46} /><div className="min-w-0 flex-1"><div className="text-[13px] font-extrabold" translate="no">{p.name}</div><div className="text-[12px]" style={{ color: '#d0507a' }}>{NEED_TEXT[p.needs[0]]}</div></div><Chip color="#e0709a">{MOOD[p.mood]}</Chip></Card>)}
           </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePeopleSearch } from '@/messenger/usePeopleSearch';
 import { sp, errText, RARITY, CATEGORY, ROOM, type Overview, type Pet, type Egg, type Item, type Art } from './api';
 import { PetPic, EggSvg, ArtOnly, PetSvg } from './PetArt';
-import { Btn, Card, Chip, Empty, Modal, Bar, INK, rid, itemIcon, Coin, useReload } from './ui';
+import { Btn, Card, Chip, Empty, Modal, Bar, INK, rid, itemIcon, ItemArt, Coin, useReload } from './ui';
 
 type T = (m: string, bad?: boolean) => void;
 type Props = { ov: Overview; reload: () => void; toast: T; openPet: (id: string) => void; myId: string };
@@ -84,7 +84,7 @@ export function ShopScreen({ ov, reload, toast }: Props) {
       <div className="flex gap-1.5 overflow-x-auto pb-1">{SHOP_TABS.map(([k, l]) => <button key={k} type="button" onClick={() => setTab(k)} className="shrink-0 rounded-full px-3 py-1.5 text-[12px] font-bold" style={{ background: tab === k ? '#7b5cf0' : 'rgba(122,92,240,.12)', color: tab === k ? '#fff' : '#6b4fd8' }}>{l}</button>)}</div>
       {list.length === 0 ? <Empty text="Здесь пока пусто" /> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{list.map((x) => (
         <Card key={`${x.k}${x.id}`} className="flex flex-col items-center text-center">
-          <div className="grid h-[88px] place-items-center">{x.k === 'egg' ? <EggSvg art={x.art} size={64} /> : x.k === 'item' ? <span className="text-[44px]" aria-hidden>{itemIcon(x)}</span> : <ArtOnly art={x.art} imageId={x.image_id} view={x.view} size={84} />}</div>
+          <div className="grid h-[88px] place-items-center">{x.k === 'egg' ? <EggSvg art={x.art} size={64} /> : x.k === 'item' ? <ItemArt item={x} size={64} /> : <ArtOnly art={x.art} imageId={x.image_id} view={x.view} size={84} />}</div>
           <div className="mt-1 text-[13px] font-extrabold" translate="no">{x.name}</div><div className="mt-0.5 flex flex-wrap justify-center gap-1"><Chip color={RARITY[x.rarity]?.color}>{RARITY[x.rarity]?.name}</Chip>{x.season && <Chip color="#2fa36b">сезон</Chip>}{x.owned && <Chip color="#2fa36b">куплено</Chip>}</div>
           {x.description && <div className="mt-1 text-[11px] opacity-70">{x.description}</div>}
           <div className="mt-2 flex flex-wrap justify-center gap-1.5">
@@ -110,7 +110,7 @@ export function InventoryScreen({ ov, reload, toast }: Props) {
     <div className="space-y-3">
       {(g?.gifts ?? []).filter((x) => x.direction === 'in').length > 0 && <Card><div className="mb-1 text-[13px] font-extrabold">Вам прислали подарки</div>{g!.gifts.filter((x) => x.direction === 'in').map((x) => <div key={x.id} className="flex items-center justify-between gap-2 py-1"><div className="text-[12px] font-semibold"><span translate="no">{x.from?.name}</span>: {x.name} ×{x.qty}{x.message && <div className="opacity-60" translate="no">«{x.message}»</div>}</div><div className="flex gap-1"><Btn small onClick={() => answer(x.id, 'accept')}>Принять</Btn><Btn small kind="soft" onClick={() => answer(x.id, 'decline')}>Нет</Btn></div></div>)}</Card>}
       {Object.keys(groups).length === 0 && <Empty text="Инвентарь пуст" hint="Предметы появятся после покупок, заданий и наград." />}
-      {Object.entries(groups).map(([k, rows]) => <div key={k}><div className="mb-1 text-[12px] font-extrabold opacity-70" style={{ color: INK }}>{KIND[k] ?? k}</div><div className="grid grid-cols-3 gap-2 sm:grid-cols-5">{rows.map((r) => <Card key={r.itemId} className="text-center" onClick={() => setSend({ kind: 'item', id: r.itemId, name: r.item?.name ?? '', max: r.qty })}><div className="text-[30px]" aria-hidden>{itemIcon(r.item)}</div><div className="text-[11px] font-bold">{r.item?.name}</div><div className="text-[11px] opacity-70">×{r.qty}</div></Card>)}</div></div>)}
+      {Object.entries(groups).map(([k, rows]) => <div key={k}><div className="mb-1 text-[12px] font-extrabold opacity-70" style={{ color: INK }}>{KIND[k] ?? k}</div><div className="grid grid-cols-3 gap-2 sm:grid-cols-5">{rows.map((r) => <Card key={r.itemId} className="text-center" onClick={() => setSend({ kind: 'item', id: r.itemId, name: r.item?.name ?? '', max: r.qty })}><div className="grid place-items-center"><ItemArt item={r.item} size={40} /></div><div className="text-[11px] font-bold">{r.item?.name}</div><div className="text-[11px] opacity-70">×{r.qty}</div></Card>)}</div></div>)}
       <div className="text-[11px] opacity-60" style={{ color: INK }}>Нажмите на предмет, чтобы подарить его другу.</div>
       {send && <Modal onClose={() => setSend(null)} title={`Подарить: ${send.name}`}><div className="space-y-2" style={{ color: INK }}>
         {to ? <div className="flex items-center justify-between rounded-2xl p-2" style={{ background: '#fff' }}><b translate="no">{to.name}</b><Btn small kind="ghost" onClick={() => setTo(null)}>Другой</Btn></div> : <PersonPick onPick={setTo} />}
